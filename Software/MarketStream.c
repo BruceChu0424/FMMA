@@ -17,8 +17,8 @@ static const char *s_sub_msg =
 // Alpaca (Output)
 static const char *s_alpaca_url   = "https://paper-api.alpaca.markets/v2/orders";
 static const char *s_alpaca_host  = "paper-api.alpaca.markets"; 
-static const char *s_alpaca_key   = "PKxxxxxxxxxxxxxxxxxx";      // <--- Put Alpaca Key Here
-static const char *s_alpaca_secret= "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; // <--- Put Alpaca Secret Here
+static const char *s_alpaca_key   = "PKLCHVBWF7ZKNFLINMSNX373BA";      // <--- Put Alpaca Key Here
+static const char *s_alpaca_secret= "FmtgXbSveSJ3YX1xdXxrPPhj3jdHzSnC9DrLrKCKkdCb"; // <--- Put Alpaca Secret Here
 
 // FPGA Memory Map (HPS-to-FPGA Bridge)
 // NOTE: Make sure this base address matches your Qsys/Platform Designer address map
