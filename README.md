@@ -33,7 +33,6 @@ docs/ -> Project description, test results, etc.
 
 3) Configure DNS:
 - sudo nano /etc/resolv.conf
-# add:
 - nameserver 8.8.8.8
 - nameserver 8.8.4.4
 
