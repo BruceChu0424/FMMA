@@ -1,2 +1,4 @@
-# FMMA
-FPGA Market Maker Accelerator
+# FMMA(FPGA Market Maker Accelerator)
+This project aims to design and implement a low-latency market making system using a DE1-SoC FPGA board as the primary engine. The FPGA will execute core components of a market making algorithm while the HPS handles network communication. Communication between the HPS and FPGA will be achieved through memory-mapped I/O using AXI bridges and on-chip RAM, allowing market data to be written directly into FPGA-accessible memory for processing.
+
+The motivation for this project is to explore hardware acceleration techniques commonly used in high-frequency trading (HFT) systems, where latency and parallel computation provide significant advantages over CPU-only implementations. Over the course of two semesters, this project aims to create a prototype capable of receiving real-time market data, processing it on the FPGA, and returning trading decisions to a Linux-based application for execution in a paper-trading environment.
