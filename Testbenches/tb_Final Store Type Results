@@ -1,0 +1,33 @@
+# ===== Final Datapath =====
+# memin: 0110011000000010
+# In R type
+# Immediate 2 is added to r6
+# r6 = 0010
+# data = 1000
+# memin: 0110111100000010
+# In R type
+# Immediate 2 is added to r15
+# r15 = 0010
+# data = 1000
+# memin: 0000111110010110
+# In R type
+# sub r6 from r15
+# r15 = 0000
+# data = 1000
+# flags = 11000
+# memin: 0110111100000011
+# In R type
+# Immediate 3 is added to r15
+# r15 = 0011
+# data = 1000
+# memin: 0110001000001000
+# In R type
+# Immediate 8 is added to r2
+# r2 = 1000
+# data = 1000
+# memin: 0100111101001000
+# In Store type
+# Store r15 in address at r2(8)
+# data = 0011
+# memin: 0100111101001000
+# Halt state

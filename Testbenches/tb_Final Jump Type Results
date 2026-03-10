@@ -1,0 +1,48 @@
+# ===== Final rSrc2path =====
+# instr2: 0110001100000101
+# flags = 00000
+# In R type
+# Immediate 5 is added to r3
+# r3 = 0101
+# instr2: 0110001000000101
+# flags = 00000
+# In R type
+# Immediate 5 is added to r2
+# r2 = 0101
+# instr2: 0000001110110010
+# flags = 00000
+# In R type
+# r2 = 0101
+# instr2: 0100000011000011
+# flags = 10000
+# In Jump type
+# r2 = 0101
+# instr2: 0000001001100011
+# flags = 10000
+# In R type
+# add r2 to r3, should be 10 if branch worked, 13 if not
+# r3 = 0101
+# r2 = 1010
+# instr2: 0110000100001010
+# flags = 00000
+# In R type
+# instr2: 0000001110110010
+# flags = 00000
+# In R type
+# r2 = 1010
+# instr2: 0100011111000001
+# flags = 00011
+# In Jump type
+# r2 = 1010
+# instr2: 0110001100000010
+# flags = 00011
+# In R type
+# instr2: 0000001001100011
+# flags = 00000
+# In R type
+# add r2 to r3, should be 17 if branch worked, 15 if not
+# r3 = 0111
+# r2 = 10001
+# Halt state
+# instr2: 0000000000000000
+# flags = 00000

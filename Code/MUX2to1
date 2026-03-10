@@ -1,0 +1,24 @@
+////////////////////////////////////////////////
+// ECE 3710
+// Group 1011
+// September 11, 2025
+// 
+// MUX Design
+//
+////////////////////////////////////////////////
+
+
+// in1 = imm
+module MUX2to1(in0, in1, control, out
+    );
+	 input [31:0] in0, in1;
+    input control;
+	 output reg [31:0] out;
+	 
+ always @(*)
+	begin
+        if(control) out = in1;
+
+        else out = in0;
+	end
+endmodule

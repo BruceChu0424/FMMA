@@ -1,0 +1,260 @@
+////////////////////////////////////////////////
+// ECE 3710
+// Group 1011
+// September 18, 2025
+// 
+//Finite State Machine to handle
+// the ALU and Register Datapath
+//
+////////////////////////////////////////////////
+module FSM(clk, rst, opcodeSelect, regBankEnable, src0, src1, Opcode, flagEnable, immediate);
+
+// Inputs
+input clk;
+input rst;
+input [3:0] opcodeSelect;
+
+// Outputs
+output reg [15:0] regBankEnable; // 16 options to enable every register
+output reg [3:0] src0, src1;
+output reg [3:0] Opcode;
+output reg flagEnable;
+output reg immediate;
+
+// Registers
+reg [3:0] current_state;
+
+// Opcode Parameters (For hardcoding if needed)
+parameter ADD = 4'b0000;
+parameter SUB = 4'b0001;
+parameter CMP = 4'b0010;
+parameter AND = 4'b0011;
+parameter OR = 4'b0100;
+parameter XOR = 4'b0101;
+parameter NOT = 4'b0110;
+parameter RSH = 4'b0111;
+parameter LSH = 4'b1000;
+parameter ARSH = 4'b1001;
+parameter NOP = 4'b1010;
+parameter ADDU = 4'b1100;
+parameter ALSH = 4'b1101;
+parameter ADDC = 4'b1011;
+parameter ADDCU = 4'b1110;
+parameter NOPF = 4'b1111;
+
+
+// States
+parameter RESET = 4'b0000;
+parameter S1 = 4'b0001;
+parameter S2 = 4'b0010;
+parameter S3 = 4'b0011;
+parameter S4 = 4'b0100;
+parameter S5 = 4'b0101;
+parameter S6 = 4'b0110;
+parameter S7 = 4'b0111;
+parameter S8 = 4'b1000;
+parameter S9 = 4'b1001;
+parameter S10 = 4'b1010;
+parameter S11 = 4'b1011;
+parameter S12 = 4'b1100;
+parameter S13 = 4'b1101;
+parameter S14 = 4'b1110;
+parameter S15 = 4'b1111;
+
+
+always@(negedge clk) begin
+
+	if(!rst) begin
+		current_state <= RESET;
+		end
+		
+	else begin
+	
+	case (current_state)
+		RESET:current_state <= S1;
+		S1:current_state <= S2;
+		S2:current_state <= S3;
+		S3:current_state <= S4;
+		S4:current_state <= S5;
+		S5:current_state <= S6; 
+		S6:current_state <= S7;
+		S7:current_state <= S8;
+		S8:current_state <= S9;
+		S9:current_state <= S10;
+		S10:current_state <= S11;
+		S11:current_state <= S12;
+		S12:current_state <= S13;
+		S13:current_state <= S14;
+		S14:current_state <= S14;		
+		default:current_state <= RESET;
+		
+	endcase
+end
+end
+
+
+// Output Logic
+always@(current_state) begin
+
+		
+	case(current_state)
+	RESET: begin
+	
+		regBankEnable = 16'd2;
+		Opcode = opcodeSelect;
+		src0 = 4'b0000;
+		src1 = 4'b0001;
+		immediate = 1;
+		flagEnable = 1;
+	
+	end
+	S1: begin// r2 = r0 + r1
+		regBankEnable = 16'd4;
+		Opcode = opcodeSelect;
+		src0 = 4'b0000;
+		src1 = 4'b0001;
+		immediate = 0;
+		flagEnable = 1;
+	
+	
+	end
+	S2: begin // r3 = r1 + r2
+		regBankEnable = 16'd8;
+		Opcode = opcodeSelect;
+		src0 = 4'b0001;
+		src1 = 4'b0010;
+		immediate = 0;
+		flagEnable = 1;
+	end
+
+	
+	
+	S3: begin 
+	    regBankEnable = 16'd16;
+		Opcode = opcodeSelect;
+		src0 = 4'b0010;
+		src1 = 4'b0011;
+		immediate = 0;
+		flagEnable = 1;
+	
+	end
+	S4: begin 
+	    regBankEnable = 16'd32;
+		Opcode = opcodeSelect;
+		src0 = 4'b0011;
+		src1 = 4'b0100;
+		immediate = 0;
+		flagEnable = 1;
+	
+	end
+	S5: begin 
+	    regBankEnable = 16'd64;
+		Opcode = opcodeSelect;
+		src0 = 4'b0100;
+		src1 = 4'b0101;
+		immediate = 0;
+		flagEnable = 1;
+	
+	end
+	S6: begin 
+	    regBankEnable = 16'd128;
+		Opcode = opcodeSelect;
+		src0 = 4'b0101;
+		src1 = 4'b0110;
+		immediate = 0;
+		flagEnable = 1;
+	
+	end
+	S7: begin 
+	    regBankEnable = 16'd256;
+		Opcode = opcodeSelect;
+		src0 = 4'b0110;
+		src1 = 4'b0111;
+		immediate = 0;
+		flagEnable = 1;
+	
+	end
+	S8: begin 
+	    regBankEnable = 16'd512;
+		Opcode = opcodeSelect;
+		src0 = 4'b0111;
+		src1 = 4'b1000;
+		immediate = 0;
+		flagEnable = 1;
+
+	
+	end
+	S9: begin 
+	    regBankEnable = 16'd1024;
+		Opcode = opcodeSelect;
+		src0 = 4'b1000;
+		src1 = 4'b1001;
+		immediate = 0;
+		flagEnable = 1;
+
+	
+	end	
+	S10: begin 
+	    regBankEnable = 16'd2048;
+		Opcode = opcodeSelect;
+		src0 = 4'b1001;
+		src1 = 4'b1010;
+		immediate = 0;
+		flagEnable = 1;
+	
+	end	
+	S11: begin 
+	    regBankEnable = 16'd4096;
+		Opcode = opcodeSelect;
+		src0 = 4'b1010;
+		src1 = 4'b1011;
+		immediate = 0;
+		flagEnable = 1;
+
+	
+	end	
+	S12: begin 
+	    regBankEnable = 16'd8192;
+		Opcode = opcodeSelect;
+		src0 = 4'b1011;
+		src1 = 4'b1100;
+		immediate = 0;
+		flagEnable = 1;
+
+	end	
+
+	S13: begin 
+	    regBankEnable = 16'd16384;
+		Opcode = opcodeSelect;
+		src0 = 4'b1100;
+		src1 = 4'b1101;
+		immediate = 0;
+		flagEnable = 1;
+	
+	end	
+	S14: begin 
+	    regBankEnable = 16'd32768;
+		Opcode = opcodeSelect;
+		src0 = 4'b1101;
+		src1 = 4'b1110;
+		immediate = 0;
+		flagEnable = 1;
+
+	
+	end	
+	
+	default: begin
+		regBankEnable = 16'd0;
+		Opcode = opcodeSelect;
+		src0 = 4'b0000;
+		src1 = 4'b0000;
+		immediate = 0;
+		flagEnable = 1;
+	end
+	
+		endcase
+
+end
+
+
+endmodule

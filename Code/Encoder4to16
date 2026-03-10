@@ -1,0 +1,60 @@
+module Encoder4to16(Rdst, regbankEn, encoderEn);
+input [3:0] Rdst;
+input encoderEn;
+output reg [15:0] regbankEn;
+
+
+
+ always @(*)
+	begin
+        regbankEn = 16'd0;
+        case(Rdst)
+
+            4'b0000:begin regbankEn[0] = encoderEn;
+            end
+
+            4'b0001: begin regbankEn[1] = encoderEn;
+            end
+
+            4'b0010: begin regbankEn[2] = encoderEn;
+        
+            end
+            4'b0011: begin regbankEn[3] = encoderEn;
+            end
+
+            4'b0100: begin regbankEn[4] = encoderEn;
+            end
+            4'b0101: begin regbankEn[5] = encoderEn;
+            end
+
+            4'b0110: begin regbankEn[6] = encoderEn;
+            end
+
+            4'b0111: begin regbankEn[7] = encoderEn;
+            end
+            
+            4'b1000: begin regbankEn[8] = encoderEn;
+            end
+
+            4'b1001: begin regbankEn[9] = encoderEn;
+            end 
+            4'b1010: begin regbankEn[10] = encoderEn;
+            end
+
+            4'b1011: begin regbankEn[11] = encoderEn;
+            end 
+
+            4'b1100: begin regbankEn[12] = encoderEn;
+            end
+            4'b1101: begin regbankEn[13] = encoderEn;
+            end
+
+            4'b1110: begin regbankEn[14] = encoderEn;
+            end
+
+            4'b1111: begin regbankEn[15] = encoderEn;
+            end
+        endcase
+	end
+
+endmodule

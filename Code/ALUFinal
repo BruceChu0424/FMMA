@@ -1,0 +1,259 @@
+////////////////////////////////////////////////
+// ECE 3710
+// Group 1011
+// October 27, 2025
+// 
+// ALU Design
+//
+// Included Operations: 
+// ADDU, ADD, ADDC, ADDCU,
+// SUB, CMP, AND, OR
+// XOR, NOT, NOP 
+// RSH, LSH, ARSH, ALSH
+////////////////////////////////////////////////
+module ALUFinal( A, B, C, Opcode, Cin, Flags);
+
+// Inputs
+input [31:0] A, B;
+input [3:0] Opcode;
+input Cin;
+
+
+// Outputs
+// Order of Flags 
+// Flags[4] = Z, Zero Flag
+// Flags[3] = C, Carry Flag
+// Flags[2] = F, Overflow Flag 
+// Flags[1] = L, Low Flag (Less than unsigned)
+// Flags[0] = N, Negative Flag
+output reg [31:0] C;
+output reg [4:0] Flags;
+
+integer i;
+// 1100 =Branch
+// 0100 = L/S and jcond
+// 0000 = R to R
+// other = I instructions
+
+// Parameters
+
+
+// 0000 R to R
+parameter AND = 4'b0001; 
+parameter OR = 4'b0010; 
+parameter XOR = 4'b0011; 
+// 0100 L and S
+parameter ADD = 4'b0101;
+parameter ADDU = 4'b0110;
+parameter ADDC = 4'b0111;
+parameter LSH = 4'b1000;
+parameter SUB = 4'b1001;
+parameter SUBC = 4'b1010;
+parameter CMP = 4'b1011;
+// 1100 Branch
+parameter ASH = 4'b1101; // different from isa
+
+// ADDCU is not on the ISA	
+//parameter ADDCU = 4'b1001;
+parameter MUL = 4'b1110;
+parameter MOV = 4'b1111; //Different from isa
+// NOT is not an op
+// could implement mov 
+// parameter RSH = 4'b0111;
+// right shift not operation
+
+// missing subC
+
+
+
+//parameter NOP = 4'b1010;
+
+
+
+reg [31:0] BCin, diff;
+reg [4:0] shift;
+
+always @(Opcode, A, B, Cin)
+begin
+	 i = 0;
+    C = 32'd0;
+    Flags = 5'b00000;
+	case (Opcode)
+		ADDU: begin
+			BCin = 32'd0;
+			shift = 5'd0;
+			i = 0;
+			{Flags[3], C} = A + B;
+			if (C == 32'd0) Flags[4] = 1'b1;
+			else Flags[4] = 1'b0;
+		end
+		
+		ADD: begin
+			BCin = 32'd0;
+			shift = 5'd0;
+			i = 0;
+			C = A + B;
+			if (C == 32'd0) Flags[4] = 1'b1;
+			else Flags[4] = 1'b0;
+			if( (~A[31] & ~B[31] & C[31]) | (A[31] & B[31] & ~C[31]) ) Flags[2] = 1'b1;
+			else Flags[2] = 1'b0;
+            Flags[0] = C[31];
+			
+		end
+		
+		ADDC: begin
+			shift = 5'd0;
+			i = 0;
+			{Flags[3], C} = {1'b0, A} + {1'b0, B} + {32'b0, Cin};
+			if (C == 32'd0) Flags[4] = 1'b1;
+			else Flags[4] = 1'b0;
+            BCin = B + {31'd0, Cin};
+			if( (~A[31] & ~BCin[31] & C[31]) | (A[31] & BCin[31] & ~C[31]) ) Flags[2] = 1'b1;
+			else Flags[2] = 1'b0;
+            Flags[0] = C[31];
+		
+		end
+		
+		SUB: begin
+			BCin = 32'd0;
+			shift = 5'd0;
+			i = 0;
+			C = A - B;
+			if (C == 32'd0) Flags[4] = 1'b1;
+			else Flags[4] = 1'b0;
+            if(A < B) Flags[3] = 1'b0;
+            else Flags[3] = 1'b1;
+			if( (A[31] ^ B[31]) & (A[31] ^ C[31]) ) Flags[2] = 1'b1;
+			else Flags[2] = 1'b0;
+			
+		end
+		
+        SUBC: begin 
+		  
+			shift = 5'd0;
+			BCin = B + {31'd0, ~Cin};
+			i = 0;
+            C = A - BCin;
+			if (C == 32'd0) Flags[4] = 1'b1;
+			else Flags[4] = 1'b0;
+            if(A < B) Flags[3] = 1'b1;
+            else Flags[3] = 1'b0;
+           
+            if( (A[31] ^ BCin[31]) & (A[31] ^ C[31]) ) Flags[2] = 1'b1;
+			else Flags[2] = 1'b0;
+			
+			
+        end
+
+		// Flags[4] = Z, Zero Flag
+		// Flags[3] = C, Carry Flag
+		// Flags[2] = F, Overflow Flag 
+		// Flags[1] = L, Low Flag (Less than unsigned)
+		// Flags[0] = N, Negative Flag
+		CMP: begin
+			BCin = 32'd0;
+			shift = 5'd0;
+
+			if( A[31] == B[31] ) begin
+				if (A < B) Flags[1:0] = 2'b11;
+				else Flags[1:0] = 2'b00;
+			end
+			else if (A[31] == 1'b0) Flags[1:0] = 2'b00;
+			else Flags[1:0] = 2'b01;
+			
+			Flags[4:2] = 3'b000;
+			
+			if(A == B) Flags[4] = 1;	
+		end
+		
+		AND: begin
+			BCin = 32'd0;
+			shift = 5'd0;
+			i = 0;
+			C = A & B;
+		end
+		
+		OR: begin
+			BCin = 32'd0;
+			shift = 5'd0;
+			i = 0;
+			C = A | B;
+		end
+
+		
+		XOR: begin
+			BCin = 32'd0;
+			shift = 5'd0;
+			i = 0;
+			C = A ^ B;
+		end
+		
+		
+		
+		
+		LSH: begin
+			BCin = 32'd0;
+			
+			C= A;
+			if((B[4:0]) >= 0) begin
+				for(i = 0; i< (B[4:0]); i=i+1)
+				C = C << 1;
+			end
+			shift = ~B[4:0]  +5'b00001;
+			if(shift > 15) shift = 15;
+			else begin
+				for(i = 0; i< ((B[4:0] ) +5'b00001); i=i+1) 
+				C = C >> 1;
+			end
+		end
+		
+		ASH: begin
+			BCin = 32'd0;
+			C = A;
+			if((B[4:0]) >= 0) begin
+				for(i = 0; i< (B[4:0]); i = i+1) 
+				C = C <<< 1;
+			end
+			shift = ~B[4:0]  +5'b00001;
+			if(shift >15) shift = 15;
+		
+
+			else begin
+
+				for(i = 0; i< shift; i = i+1) 
+				C = C >>> 1;
+			end
+		end
+	
+		
+		
+		
+		
+      MUL: begin
+			BCin = 32'd0;
+			shift = 5'd0;
+			i = 0;
+         C = A * B;
+        end
+
+		MOV: begin
+			BCin = 32'd0;
+			shift = 5'd0;
+			i = 0;
+			C = B;
+		end
+        default: begin
+				BCin = 32'd0;
+				shift = 5'd0;
+				i = 0;
+            C = C;
+            Flags = 5'b00000;
+        end
+
+		
+	endcase
+end
+
+
+
+endmodule

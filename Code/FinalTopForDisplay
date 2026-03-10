@@ -1,0 +1,61 @@
+module Finaltop(clk, rst, r1seg, r2seg, dataseg);
+
+input clk, rst;
+
+wire [31:0] r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15, instrR, instr, rAddr, Imm, ALUout, DestImm, rDest,
+rSrc2, ALUMUXout, addr, data;//rSrc, DestImm
+wire [15:0] ren;
+wire [9:0] pc_out, PCchange;
+wire [7:0] disp;
+wire [4:0] flags, flagsR;
+wire [3:0] op, rSrc, outaddr, rDst;
+wire [1:0] dispcontrol;
+wire ImmSelect, RS, PCen, LS, we, Fen, IRen;
+
+output wire [7:0] r1seg, r2seg, dataseg;
+
+bram memory(.data_a(32'b00000000000000000000000000000000), .data_b(rSrc2), 
+.we_a(1'b0), .we_b(we), .addr_a(pc_out), .addr_b(rAddr[9:0]), .q_a(instr), .q_b(data), .clk(clk));
+
+MUX16to1 srcMUX(.in0(r0), .in1(r1), .in2(r2), .in3(r3), .in4(r4), .in5(r5),
+.in6(r6), .in7(r7), .in8(r8), .in9(r9), .in10(r10), .in11(r11), .in12(r12), 
+.in13(r13), .in14(r14), .in15(r15), .control(rSrc), .out(rSrc2) );
+
+MUX16to1 destMUX(.in0(r0), .in1(r1), .in2(r2), .in3(r3), .in4(r4), .in5(r5),
+.in6(r6), .in7(r7), .in8(r8), .in9(r9), .in10(r10), .in11(r11), .in12(r12), 
+.in13(r13), .in14(r14), .in15(r15), .control(instr[11:8]), .out(rDest));
+
+MUX16to1 addrMUX(.in0(r0), .in1(r1), .in2(r2), .in3(r3), .in4(r4), .in5(r5),
+.in6(r6), .in7(r7), .in8(r8), .in9(r9), .in10(r10), .in11(r11), .in12(r12), 
+.in13(r13), .in14(r14), .in15(r15), .control(instr[3:0]), .out(rAddr));
+
+MUX2to1 immMUX(.in0(rDest), .in1(Imm), .control(ImmSelect), .out(DestImm));
+
+MUX2to1 ALUMUX(.in0(ALUout), .in1(data), .control(LS), .out(ALUMUXout));
+
+RegBank regBank(.ALUBus(ALUMUXout), .r0(r0), .r1(r1), .r2(r2), .r3(r3), .r4(r4), .r5(r5),
+.r6(r6), .r7(r7), .r8(r8), .r9(r9), .r10(r10), .r11(r11), .r12(r12), 
+.r13(r13), .r14(r14), .r15(r15), .regEnable(ren), .clk(clk), .rst(rst));
+
+ALUFinal ALU(.A(DestImm), .B(rSrc2), .Opcode(op), .C(ALUout), .Flags(flags), .Cin(1'b0));
+
+FSMtrial FSM(.clk(clk), .rst(rst), .memin(instr), .Ren(RS), .displaceControl(dispcontrol), .RI(ImmSelect), .PCen(PCen), .opcode(op),
+.rSrc(rSrc), .rDst(rDst), .Imm(Imm), .Fen(Fen), .IRen(IRen), .instruction(instrR), .LS(LS), .we(we), .flags(flagsR));
+
+PC PC(.in(PCchange), .out(pc_out), .clk(clk), .rst(rst), .enable(PCen));
+
+Disp Disp(.PCnew(PCchange), .PCold(pc_out), .control(dispcontrol), .disp(instr[7:0]), .addr(rAddr[9:0]));
+
+IR IR(.in(instr), .out(instrR), .clk(clk), .rst(rst), .enable(IRen));
+
+FR FR(.in(flags), .out(flagsR), .clk(clk), .rst(rst), .enable(Fen));
+
+Encoder4to16 Encoder(.Rdst(instr[11:8]), .regbankEn(ren), .encoderEn(RS));
+
+decoder R1Display(.in(r1[15:0]), .segment_display(r1seg));
+
+decoder R2Display(.in(r2[15:0]), .segment_display(r2seg));
+
+decoder DataDisplay(.in(data[15:0]), .segment_display(dataseg));
+
+endmodule

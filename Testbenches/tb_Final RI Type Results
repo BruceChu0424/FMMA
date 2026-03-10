@@ -1,0 +1,19 @@
+# ===== Final Datapath =====
+# Instruction: 0110000100000010
+# rDst = 0001
+# Immediate 2 is added to r1
+# r1 = 0010
+# Instruction: 0110001000000100
+# rDst = 0010
+# Immediate 4 is added to r2
+# r2 = 0100
+# Instruction: 0000001001100001
+# rDst = 0010
+# r1 is added to r2 and stored in r2
+# r2 = 0110
+# Instruction: 0000000110110010
+# rDst = 0001
+# compare r1 to r2
+# flags = 00011
+# Instruction: 0000000000000000
+# Halt state

@@ -1,0 +1,34 @@
+////////////////////////////////////////////////
+// ECE 3710
+// Group 1011
+// October, 2025
+// 
+// Flags Register Design
+//
+////////////////////////////////////////////////
+
+module FR(in, enable, rst, clk, out);
+
+// Input for the in value of the reg
+input [4:0] in;
+// Inputs to enable the reg, rst the reg, and a clock to run on
+input enable, clk, rst;
+
+// An output for the out value
+output reg [4:0] out;
+
+// Always run of the positive edge of the clock
+always @(negedge clk)
+    begin
+        // If rst is set, rst the reg to 0
+
+		// non blocking assignment for sequential 
+        if(rst) out <= 5'd0;
+
+        // If the enable is on, set the output of the register to the input
+        else begin
+            if(enable) out <= in;
+        end
+    end
+
+endmodule

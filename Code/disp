@@ -1,0 +1,32 @@
+module Disp(PCold, control, PCnew, disp, addr);
+
+input [9:0] PCold, addr;
+input [1:0] control;
+input [7:0] disp;
+output reg [9:0] PCnew;
+always @(*) begin
+
+    case(control)
+    2'b00: begin 
+        PCnew  = PCold;
+    end
+
+    2'b01: begin 
+        PCnew  = PCold + 10'b0000000001;
+    end
+	 
+	 2'b10: begin 
+        PCnew  = PCold + disp;
+    end
+	 
+	 2'b11: begin 
+        PCnew  = addr;
+    end
+	 
+	 default: begin
+		PCnew = 10'b0000000000;
+	 end
+    endcase
+end
+
+endmodule

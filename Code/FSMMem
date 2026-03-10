@@ -1,0 +1,95 @@
+////////////////////////////////////////////////
+// ECE 3710
+// Group 1011
+// October 1, 2025
+// 
+// Finite State Machine for Memory Management
+//
+////////////////////////////////////////////////
+module FSMMem
+#(parameter DATA_WIDTH=16, parameter ADDR_WIDTH=10)
+(
+	output reg[(DATA_WIDTH-1):0] data_a, data_b,
+	output reg[(ADDR_WIDTH-1):0] addr_a, addr_b,
+	output reg we_a, we_b,
+	input clk, rst,
+	input [15:0] in_a, in_b);
+
+reg[2:0] current_state;
+
+localparam READ = 3'b000;
+localparam READ2 = 3'b001;
+localparam RESET = 3'b111;
+localparam WRITE1 = 3'b010;
+
+// Output progression (Combinational)
+always@(posedge clk) begin
+	if(!rst) current_state <= RESET;
+
+    // Default assignments to prevent latches
+	we_a = 1'b0;
+	we_b = 1'b0;
+	addr_a = 10'b0000000000;
+	addr_b = 10'b0000000001;
+	data_a = 16'b0000000000000000;
+	data_b = 16'b0000000000000000;
+
+	
+	case(current_state)
+	READ: begin
+	$display("READ1");
+	$display("Address A = 0000");
+	$display("Address B = 0001");
+	we_a = 1'b0;
+	we_b = 1'b0;
+	addr_a = 10'b0000000000;
+	addr_b = 10'b0000000001;
+	data_a = 16'b0000000000000000;
+	data_b = 16'b0000000000000000;
+	current_state <= WRITE1;
+		end
+		
+		WRITE1: begin
+	$display("WRITE1");
+	$display("Address A = 0000");
+	$display("Address B = 0001");
+	$display("Modifying values at addr 0 and 1 with plus 1 to each");
+	$display("in_a = %b%b%b%b, in_b = %b%b%b%b", in_a[3], in_a[2], in_a[1], in_a[0], in_b[3], in_b[2], in_b[1], in_b[0]);
+	we_a = 1'b1;
+	we_b = 1'b1;
+	addr_a = 10'b0000000000;
+	addr_b = 10'b0000000001;
+	data_a = in_a + 16'b0000000000000001;
+	data_b = in_b + 16'b0000000000000001;
+	current_state <= READ2;
+		end
+	
+	READ2: begin
+	$display("READ2");
+	$display("Address A = 0000");
+	$display("Address B = 0001");
+	we_a = 1'b0;
+	we_b = 1'b0;
+	addr_a = 10'b0000000010;
+	addr_b = 10'b0000000011;
+	data_a = 16'b0000000000000000;
+	data_b = 16'b0000000000000000;
+	current_state <= RESET;
+		end
+	
+		
+	RESET: begin
+	$display("RESET");
+	we_a = 1'b0;
+	we_b = 1'b0;
+	addr_a = 10'b0000000000;
+	addr_b = 10'b0000000001;
+	data_a = 16'b0000000000000000;
+	data_b = 16'b0000000000000000;
+	current_state <= READ;
+		end
+
+	endcase
+end
+
+endmodule

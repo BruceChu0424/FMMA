@@ -1,0 +1,249 @@
+////////////////////////////////////////////////
+// ECE 3710
+// Group 1011
+// October 27, 2025
+// 
+//Finite State Machine to handle all memins
+//
+////////////////////////////////////////////////
+module FSMtrial(rst, clk, Ren, RI, PCen, displaceControl, memin, instruction, opcode, rSrc, rDst, Imm, Fen, IRen, LS, we, flags);
+
+// Inputs
+input clk;
+input rst;
+input [4:0] flags;
+input [31:0] memin, instruction;
+
+// Outputs
+output reg Ren;
+output reg [1:0] displaceControl;
+output reg RI, PCen, Fen, IRen, LS, we;
+output reg [3:0] opcode, rSrc, rDst;
+output reg [32:0] Imm;
+
+// Registers
+reg [3:0] state;
+
+// States
+parameter S0 = 4'b0000; // Fetch 
+parameter S1 = 4'b0001; // Decode
+parameter S2 = 4'b0010; // R and I Type 
+parameter S3 = 4'b0011; // Store Type
+parameter S4 = 4'b0100; // Load Type 1
+parameter S5 = 4'b0101; // Branch Type
+parameter S6 = 4'b0110; // Jump Type
+parameter hlt = 4'b1111; // Halt state
+// maybe well need another state? parameter S7 = 4'b0111;
+
+always@(negedge clk) begin
+
+    if(!rst) begin
+		state <= S0;
+	end
+	
+	// Defaults to prevent latches
+	Ren = 0;
+	displaceControl = 2'b00;
+	RI = 0;
+	PCen = 0;
+	Fen = 0;
+	IRen = 1;
+	LS = 0;
+	we = 0;
+	opcode = 4'b0000;
+	rSrc = 4'b0000;
+	rDst = 4'b0000;
+	Imm = 32'b00000000000000000000000000000000;
+		
+	case(state) 
+	
+	// Fetch
+	S0: begin
+		IRen = 1;
+		Ren = 0;
+		RI = 0;
+		LS = 0;
+		we = 0;
+		state <= S1;
+	end
+	
+	// Decode
+	S1: begin
+		IRen = 0;
+		if(memin == 32'b00000000000000000000000000000000) begin
+			state <= hlt;
+		end
+		else begin
+			rDst = memin[11:8];
+			// If load, store, or jump
+			if(memin[15:12] == 4'b0100) begin
+				displaceControl = 2'b01;
+				// If store
+				if(memin[7:4] == 4'b0100) begin
+					rSrc = memin[11:8];
+					we = 1;
+					PCen = 1;
+					state <= S3;
+				end
+				// If load
+				else if(memin[7:4] == 4'b0000) begin
+					rSrc = memin[3:0];
+					Ren = 1;
+					PCen = 1;
+					LS = 1;
+					state <= S4;
+				end
+				// If jump
+				else if(memin[7:4] == 4'b1100) begin
+					PCen = 1;
+					displaceControl = 2'b01;
+					if(memin[11:8] == 4'b0000) begin
+						if(flags[4] == 1'b1) displaceControl = 2'b11;
+					end
+					else if(memin[11:8] == 4'b0001) begin
+						if(flags[4] == 1'b0) displaceControl = 2'b11;
+					end
+					else if(memin[11:8] == 4'b1101) begin
+						if(flags[4] == 1'b1 || flags[0] == 1) displaceControl = 2'b11;
+					end
+					else if(memin[11:8] == 4'b0110) begin
+						if(flags[0] == 1'b1) displaceControl = 2'b11;
+					end
+					else if(memin[11:8] == 4'b0111) begin
+						if(flags[4] == 1'b1 || flags[0] == 1'b0) displaceControl = 2'b11;
+					end
+					else if(memin[11:8] == 4'b1100) begin
+						if(flags[4] == 1'b0 || flags[0] == 1'b0) displaceControl = 2'b11;
+					end
+					else if(memin[11:8] == 4'b1110) begin
+						displaceControl = 2'b11;
+					end
+					state <= S6;
+				end
+			end
+			// If branch type
+			else if(memin[15:12] == 4'b1100) begin
+				PCen = 1;
+				displaceControl = 2'b01;
+				if(memin[11:8] == 4'b0000) begin
+					if(flags[4] == 1'b1) displaceControl = 2'b10;
+				end
+				else if(memin[11:8] == 4'b0001) begin
+					if(flags[4] == 1'b0) displaceControl = 2'b10;
+				end
+				else if(memin[11:8] == 4'b1101) begin
+					if(flags[4] == 1'b1 || flags[0] == 1) displaceControl = 2'b10;
+				end
+				else if(memin[11:8] == 4'b0110) begin
+					if(flags[0] == 1'b1) displaceControl = 2'b10;
+				end
+				else if(memin[11:8] == 4'b0111) begin
+					if(flags[4] == 1'b1 || flags[0] == 1'b0) displaceControl = 2'b10;
+				end
+				else if(memin[11:8] == 4'b1100) begin
+					if(flags[4] == 1'b0 || flags[0] == 1'b0) displaceControl = 2'b10;
+				end
+				else if(memin[11:8] == 4'b1110) begin
+					displaceControl = 2'b10;
+				end
+				state <= S5;
+			end
+			// If RI Type
+			else begin
+				Imm = {8'b00000000, memin[31:16], memin[7:0]};
+				// If R to R
+				if(memin[15:12] == 4'b0000) begin
+					rSrc = memin[3:0];
+					RI = 0;
+					opcode = memin[7:4];
+				end
+				
+				// If R to I
+				else begin
+					rSrc = memin[11:8];
+					RI = 1;
+					opcode = memin[15:12];
+				end
+					
+				displaceControl = 2'b01;
+				if(opcode != 4'b1011) begin
+					Ren = 1;
+				end
+				PCen = 1;
+				Fen = 1;
+				state <= S2;
+			end
+		end
+	end
+
+	// R and I type
+	S2: begin
+		$display("In R type");
+		PCen = 0;
+		Ren = 0;
+		Fen = 0;
+		IRen = 0;
+		
+		state <= S0;
+	end
+	
+	// Store type
+	S3: begin
+		$display("In Store type");
+		PCen = 0;
+		Ren = 0;
+		Fen = 0;
+		IRen = 0;
+		LS = 0;
+		we = 0;
+		
+		state <= S0;
+	end
+	
+	// Load Type Set Memory Address
+	S4: begin
+		$display("In Load type");
+		PCen = 0;
+		Ren = 0;
+		Fen = 0;
+		IRen = 0;
+		LS = 0;
+		we = 0;
+		
+		state <= S0;
+	end
+	
+	// Branch Type
+	S5: begin
+		$display("In Branch type");
+		PCen = 0;
+		Ren = 0;
+		Fen = 0;
+		IRen = 0;
+		LS = 0;
+		we = 0;
+		
+		state <= S0;
+	end
+	
+	// Jump Type
+	S6: begin
+		$display("In Jump type");
+		PCen = 0;
+		Ren = 0;
+		Fen = 0;
+		IRen = 0;
+		LS = 0;
+		we = 0;
+		
+		state <= S0;
+	end
+	
+	hlt: begin
+		state <= state;
+	end
+	
+	endcase
+	
+end
+endmodule

@@ -1,0 +1,64 @@
+////////////////////////////////////////////////
+// ECE 3710
+// Group 1011
+// September 18, 2025
+// 
+// Register Design
+//
+////////////////////////////////////////////////
+
+module register(in, enable, rst, clk, out);
+
+// Input for the in value of the reg
+input [31:0] in;
+// Inputs to enable the reg, rst the reg, and a clk to run on
+input enable, clk, rst;
+
+// An output for the out value
+output reg [31:0] out;
+
+// Always run of the negative edge of the clk
+always @(negedge clk)
+    begin
+        // If rst is set, rst the reg to 0
+
+		// non blocking assignment for sequential 
+        if(rst) out <= 32'd0;
+
+        // If the enable is on, set the output of the register to the input
+        else begin
+            if(enable) out <= in;
+        end
+    end
+
+endmodule
+
+// Structural Implementation of RegBank
+/********/
+module RegBank(ALUBus, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15, regEnable, clk, rst);
+	input clk, rst;
+	input [31:0] ALUBus;
+	input [15:0] regEnable;
+	output [31:0] r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15;
+
+	
+register R0(.in(ALUBus), .enable(regEnable[0]), .rst(rst), .clk(clk),.out(r0));
+register R1(.in(ALUBus), .enable(regEnable[1]), .rst(rst), .clk(clk),.out(r1));
+register R2(.in(ALUBus), .enable(regEnable[2]), .rst(rst), .clk(clk),.out(r2));
+register R3(.in(ALUBus), .enable(regEnable[3]), .rst(rst), .clk(clk),.out(r3));
+register R4(.in(ALUBus), .enable(regEnable[4]), .rst(rst), .clk(clk),.out(r4));
+register R5(.in(ALUBus), .enable(regEnable[5]), .rst(rst), .clk(clk),.out(r5));
+register R6(.in(ALUBus), .enable(regEnable[6]), .rst(rst), .clk(clk),.out(r6));
+register R7(.in(ALUBus), .enable(regEnable[7]), .rst(rst), .clk(clk),.out(r7));
+register R8(.in(ALUBus), .enable(regEnable[8]), .rst(rst), .clk(clk),.out(r8));
+register R9(.in(ALUBus), .enable(regEnable[9]), .rst(rst), .clk(clk),.out(r9));
+register R10(.in(ALUBus), .enable(regEnable[10]), .rst(rst), .clk(clk),.out(r10));
+register R11(.in(ALUBus), .enable(regEnable[11]), .rst(rst), .clk(clk),.out(r11));
+register R12(.in(ALUBus), .enable(regEnable[12]), .rst(rst), .clk(clk),.out(r12));
+register R13(.in(ALUBus), .enable(regEnable[13]), .rst(rst), .clk(clk),.out(r13));
+register R14(.in(ALUBus), .enable(regEnable[14]), .rst(rst), .clk(clk),.out(r14));
+register R15(.in(ALUBus), .enable(regEnable[15]), .rst(rst), .clk(clk),.out(r15));
+
+
+endmodule
+/**************/

@@ -1,0 +1,19 @@
+# ===== Final rSrc2path =====
+# instr2: 0110000100001000
+# In R type
+# Immediate 8 is added to r1
+# r1 = 1000
+# instr2: 0100001000000001
+# In Load type
+# Load mem at r1 (address 8) to r2
+# r2 = 1000
+# instr2: 0110001100000010
+# In R type
+# Immediate 2 is added to r3
+# r3 = 0010
+# instr2: 0000001001100011
+# In R type
+# add r2 to r3
+# r2 = 1010
+# Halt state
+# instr2: 0000000000000000
