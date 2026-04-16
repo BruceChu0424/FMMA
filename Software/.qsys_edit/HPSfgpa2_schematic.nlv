@@ -54,12 +54,12 @@ preplace inst HPSfgpa2.hps_0.f2s_periph_ref_clk -pg 1
 preplace inst HPSfgpa2.clk_0 -pg 1 -lvl 1 -y 30
 preplace inst HPSfgpa2.hps_0.dma -pg 1
 preplace inst HPSfgpa2.hps_0.arm_gic_0 -pg 1
-preplace netloc EXPORT<net_container>HPSfgpa2</net_container>(SLAVE)onchip_memory2_0.s2,(SLAVE)HPSfgpa2.bram_out) 1 0 3 NJ 100 NJ 100 NJ
-preplace netloc EXPORT<net_container>HPSfgpa2</net_container>(SLAVE)clk_0.clk_in_reset,(SLAVE)HPSfgpa2.reset) 1 0 1 NJ
-preplace netloc FAN_OUT<net_container>HPSfgpa2</net_container>(SLAVE)hps_0.f2h_axi_clock,(MASTER)clk_0.clk,(SLAVE)onchip_memory2_0.clk1,(SLAVE)hps_0.h2f_axi_clock,(SLAVE)hps_0.f2h_sdram0_clock,(SLAVE)hps_0.h2f_lw_axi_clock) 1 1 2 270 40 NJ
+preplace netloc FAN_OUT<net_container>HPSfgpa2</net_container>(SLAVE)hps_0.f2h_axi_clock,(SLAVE)hps_0.f2h_sdram0_clock,(SLAVE)onchip_memory2_0.clk1,(MASTER)clk_0.clk,(SLAVE)hps_0.h2f_lw_axi_clock,(SLAVE)hps_0.h2f_axi_clock) 1 1 2 290 100 600
+preplace netloc EXPORT<net_container>HPSfgpa2</net_container>(SLAVE)HPSfgpa2.reset,(SLAVE)clk_0.clk_in_reset) 1 0 1 NJ
 preplace netloc EXPORT<net_container>HPSfgpa2</net_container>(SLAVE)clk_0.clk_in,(SLAVE)HPSfgpa2.clk) 1 0 1 NJ
-preplace netloc POINT_TO_POINT<net_container>HPSfgpa2</net_container>(SLAVE)onchip_memory2_0.s1,(MASTER)hps_0.h2f_axi_master) 1 2 1 580
-preplace netloc EXPORT<net_container>HPSfgpa2</net_container>(SLAVE)HPSfgpa2.memory,(SLAVE)hps_0.memory) 1 0 2 NJ 290 NJ
+preplace netloc POINT_TO_POINT<net_container>HPSfgpa2</net_container>(SLAVE)onchip_memory2_0.s1,(MASTER)hps_0.h2f_axi_master) 1 2 1 640
 preplace netloc POINT_TO_POINT<net_container>HPSfgpa2</net_container>(MASTER)clk_0.clk_reset,(SLAVE)onchip_memory2_0.reset1) 1 1 2 N 60 NJ
-levelinfo -pg 1 0 60 750
-levelinfo -hier HPSfgpa2 70 100 390 630 740
+preplace netloc EXPORT<net_container>HPSfgpa2</net_container>(SLAVE)hps_0.memory,(SLAVE)HPSfgpa2.memory) 1 0 2 NJ 290 NJ
+preplace netloc EXPORT<net_container>HPSfgpa2</net_container>(SLAVE)HPSfgpa2.bram_out,(SLAVE)onchip_memory2_0.s2) 1 0 3 NJ 100 NJ 80 NJ
+levelinfo -pg 1 0 60 810
+levelinfo -hier HPSfgpa2 70 100 410 690 800

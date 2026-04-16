@@ -4,19 +4,20 @@ editor if you plan to continue editing the block that represents it in
 the Block Editor! File corruption is VERY likely to occur.
 */
 /*
-Copyright (C) 2018  Intel Corporation. All rights reserved.
-Your use of Intel Corporation's design tools, logic functions 
-and other software and tools, and its AMPP partner logic 
+Copyright (C) 2025  Altera Corporation. All rights reserved.
+Your use of Altera Corporation's design tools, logic functions 
+and other software and tools, and any partner logic 
 functions, and any output files from any of the foregoing 
 (including device programming or simulation files), and any 
 associated documentation or information are expressly subject 
-to the terms and conditions of the Intel Program License 
-Subscription Agreement, the Intel Quartus Prime License Agreement,
-the Intel FPGA IP License Agreement, or other applicable license
+to the terms and conditions of the Altera Program License 
+Subscription Agreement, the Altera Quartus Prime License Agreement,
+the Altera IP License Agreement, or other applicable license
 agreement, including, without limitation, that your use is for
 the sole purpose of programming logic devices manufactured by
-Intel and sold by Intel or its authorized distributors.  Please
-refer to the applicable agreement for further details.
+Altera and sold by Altera or its authorized distributors.  Please
+refer to the Altera Software License Subscription Agreements 
+on the Quartus Prime software download page.
 */
 (header "symbol" (version "1.1"))
 (symbol
@@ -228,7 +229,7 @@ refer to the applicable agreement for further details.
 		(text "oct_rzqin" (rect 230 307 514 624)(font "Arial" (color 0 0 0)))
 		(text "reset" (rect 115 219 260 451)(font "Arial" (color 128 0 0)(font_size 9)))
 		(text "reset_n" (rect 149 243 340 496)(font "Arial" (color 0 0 0)))
-		(text " system " (rect 381 328 810 666)(font "Arial" ))
+		(text " HPSfgpa2 " (rect 370 328 800 666)(font "Arial" ))
 		(line (pt 144 32)(pt 272 32)(line_width 1))
 		(line (pt 272 32)(pt 272 328)(line_width 1))
 		(line (pt 144 328)(pt 272 328)(line_width 1))
