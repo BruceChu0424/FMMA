@@ -58,7 +58,7 @@ application, on the development machine:
 This layer is what makes `--bench` meaningful: it proves the C strategy
 really is the same algorithm as the assembly one.
 
-### Layer 1 — Python (96 tests, ~2 s)
+### Layer 1 — Python (99 tests, ~2 s)
 
 `Software/test_toolchain.py` (48 tests)
 
@@ -71,7 +71,7 @@ really is the same algorithm as the assembly one.
 | `TestConditions` | all six conditions against a Python signed comparison, over a grid of boundary values |
 | `TestSimulator` | LDI-then-arithmetic, immediate operand order, load/store through a register, backward branches, register jumps, the halt state, self-start, 3-cycle timing, undefined-encoding stall |
 
-`Software/test_strategy.py` (48 tests, covering both strategies)
+`Software/test_strategy.py` (51 tests, covering both strategies)
 
 | Group | What it covers |
 |-------|----------------|
@@ -83,6 +83,7 @@ really is the same algorithm as the assembly one.
 | `TestFillAccounting` | buys and sells move the position; a fill is applied once; the position survives many quotes |
 | `TestTiming` | idle loop is exactly 39 cycles; a decision completes inside 250 cycles |
 | `TestMarketMaker` | the quoting strategy: quotes straddle the mid, the first tick only quotes, a later move lifts the ask or hits the bid, a wider spread trades less, inventory skew moves both quotes and makes the reducing side easier to reach, the risk limit and the master switch still apply |
+| `TestUninitialisedRegisters` | both strategies from a **poisoned register file**, because a model that starts every register at zero silently validates programs that depend on it — see §12.4 |
 
 ### Layer 2 — `Testbenches/tb_alu.v`
 
@@ -115,12 +116,51 @@ five flag bits are compared.
 `Testbenches/tb_latency.v` measures three numbers on the same RTL and fails
 if any exceeds its budget.
 
-### Layer 4 — on the board
+### Layer 4 — `Testbenches/tb_isa_probe.v` (10 checks)
 
-[11-board-bringup](11-board-bringup.md) is the procedure, and §11.8 lists the
-six output lines that constitute the checks.
+Runs `Software/isa_probe.asm` — the *same image the board runs* —
+against the RTL and compares the published bit mask. Each instruction
+is checked independently, so one broken instruction does not hide the
+state of the others: MOV/SUB/ADD immediates, `LSH` both directions,
+signed `ASH`, taken `BEQ` and `BNE`, a register jump, and a LOAD/STOR
+round trip.
+
+Its value is in being run in *both* places. Simulation says what the
+design should do; the board says what it does; and when they disagree,
+the difference is the bug, already narrowed to one instruction.
+
+### Layer 5 — on the board
+
+Two programs, neither of which needs TLS, the network or a broker:
+
+| | |
+|---|---|
+| `fmma-bench --selftest` | 21 protocol conformance checks against the real fabric — liveness, the seqlock, the threshold, the kill switch, the position limit, reduce-at-the-limit, restart. The hardware half of layers 1 and 3. |
+| `fmma-bench` | latency over thousands of synthetic quotes, cross-checking every fabric decision against `fmma_strategy.c`. The hardware half of the equivalence argument. |
+
+[11-board-bringup](11-board-bringup.md) is the procedure and
+[13](13-test-report.md) §13.5 has the results.
 
 ## 12.4 The simulation model, and where it is optimistic
+
+### Registers do not start at zero
+
+`fmma_sim.Cpu` zeroes its register file, and so did every test that
+used it. That is a lie about the hardware, and it cost a real bug:
+`market_maker.asm` used `R9 == 0` to mean "we have not quoted yet",
+never cleared `R9`, and passed all fourteen of its tests. On the board
+the guard never fired and the strategy traded on every tick without
+ever publishing a single quote. [08](08-trading-strategy.md) §8.6 has
+the full account.
+
+`Cpu(poison=...)` fills the register file with a non-zero value and
+`TestUninitialisedRegisters` runs both strategies that way. The value
+is fixed rather than random, so a failure reproduces, and its high bit
+is set, so sign mistakes surface. Those tests were confirmed to fail
+against the unfixed program — a regression test nobody has seen fail
+is not yet a regression test.
+
+### The Qsys stub
 
 `Testbenches/HPSfgpa2_stub.v` stands in for the Qsys system. A stub that is
 more forgiving than the hardware makes "all tests passed" meaningless, so

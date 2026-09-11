@@ -113,6 +113,28 @@ else
     bad "tb_fmma did not compile (see $BUILD/tb_fmma.log)"
 fi
 
+banner "RTL: ISA conformance, the same program the board runs"
+# isa_probe.asm checks each instruction independently and publishes a
+# bit mask.  Running it here and on hardware gives two readings of the
+# same experiment; when they disagree, the difference is the bug.
+#
+# It is assembled under its own prefix so the default image stays
+# trading.asm - a diagnostic must not change what the board would run.
+if ( cd "$SOFTWARE" && "$PYTHON" Assembler.py isa_probe.asm         --quiet --prefix isa_probe ) 2>"$BUILD/isa.log"; then
+    # shellcheck disable=SC2086
+    if iverilog -g2005 -I"$HERE" -o "$BUILD/tb_isa_probe.vvp" $RTL             "$HERE/HPSfgpa2_stub.v" "$HERE/tb_isa_probe.v"             2>>"$BUILD/isa.log"; then
+        if ( cd "$HERE" && vvp "$BUILD/tb_isa_probe.vvp" ) 2>&1              | tee -a "$BUILD/isa.log" | grep -q "all 10 checks pass"; then
+            ok "tb_isa_probe"
+        else
+            bad "tb_isa_probe (see $BUILD/isa.log)"
+        fi
+    else
+        bad "tb_isa_probe did not compile (see $BUILD/isa.log)"
+    fi
+else
+    bad "isa_probe.asm did not assemble (see $BUILD/isa.log)"
+fi
+
 banner "RTL: latency budget"
 # shellcheck disable=SC2086
 if iverilog -g2005 -I"$HERE" -o "$BUILD/tb_latency.vvp" $RTL \

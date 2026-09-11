@@ -29,12 +29,14 @@
 
 #include "fmma_fpga.h"
 #include "fmma_log.h"
+#include "fmma_selftest.h"
 #include "fmma_socfpga.h"
 #include "fmma_stats.h"
 #include "fmma_strategy.h"
 #include "fmma_time.h"
 
 #include "../fmma_protocol.h"
+#include "../fpga_program.h"
 
 #include <signal.h>
 #include <stdint.h>
@@ -58,10 +60,13 @@ struct bench_opts {
     uint32_t interval_us;  /* gap between them                  */
     uint32_t threshold;    /* CFG_THRESH                        */
     uint32_t max_position; /* CFG_MAX_POS                       */
+    uint32_t half_spread;  /* CFG_HALF_SPREAD, quoting strategy */
+    uint32_t skew;         /* CFG_SKEW, quoting strategy        */
     uint32_t base_price;   /* centre of the synthetic series    */
     uint32_t spread;       /* ask - bid                         */
     int      load;         /* 0 = use the program already there */
     int      force;        /* skip the fabric-state check       */
+    int      selftest;     /* conformance instead of timing     */
     int      verbose;
     const char *csv;
 };
@@ -82,6 +87,7 @@ static void usage(void)
 {
     printf(
 "fmma-bench - measure fabric decision latency (protocol v%u)\n\n"
+"  --selftest       check protocol conformance instead of timing\n"
 "  --ticks N        quotes to publish            (default 1000)\n"
 "  --interval US    microseconds between them    (default 1000)\n"
 "  --threshold N    CFG_THRESH, price units      (default 5)\n"
@@ -104,6 +110,7 @@ static int parse_args(int argc, char **argv, struct bench_opts *o)
 
         if (!strcmp(a, "-h") || !strcmp(a, "--help")) { usage(); return 1; }
         else if (!strcmp(a, "--no-load"))  o->load = 0;
+        else if (!strcmp(a, "--selftest")) o->selftest = 1;
         else if (!strcmp(a, "--force"))    o->force = 1;
         else if (!strcmp(a, "-v") || !strcmp(a, "--verbose")) o->verbose = 1;
         else if (!strcmp(a, "--csv") && v) { o->csv = v; i++; }
@@ -111,6 +118,8 @@ static int parse_args(int argc, char **argv, struct bench_opts *o)
         else if (!strcmp(a, "--interval") && v)  { o->interval_us = strtoul(v, 0, 0); i++; }
         else if (!strcmp(a, "--threshold") && v) { o->threshold = strtoul(v, 0, 0); i++; }
         else if (!strcmp(a, "--max-pos") && v)   { o->max_position = strtoul(v, 0, 0); i++; }
+        else if (!strcmp(a, "--half-spread") && v) { o->half_spread = strtoul(v, 0, 0); i++; }
+        else if (!strcmp(a, "--skew") && v)      { o->skew = strtoul(v, 0, 0); i++; }
         else if (!strcmp(a, "--price") && v)     { o->base_price = strtoul(v, 0, 0); i++; }
         else if (!strcmp(a, "--spread") && v)    { o->spread = strtoul(v, 0, 0); i++; }
         else {
@@ -173,7 +182,24 @@ static void report_loop_rate(struct fmma_fpga *f)
 
 struct run_result {
     uint32_t published, answered, unanswered, mismatched;
+    int      comparable;   /* was the software cross-check meaningful? */
 };
+
+/*
+ * fmma_strategy.c transcribes trading.asm and nothing else, so
+ * comparing its decisions against the fabric only means something when
+ * that is the image in the fabric.  Run the quoting strategy and the
+ * two disagree by design - it signals when a later move reaches a
+ * resting quote, which the mean-reversion model knows nothing about.
+ *
+ * Reporting "fabric and software disagree" in that case would be a
+ * false alarm, and a false alarm in a verification tool is worse than
+ * no check at all: it teaches you to ignore the line.
+ */
+static int image_is_comparable(void)
+{
+    return strcmp(FPGA_PROGRAM_NAME, "trading.asm") == 0;
+}
 
 /*
  * The strategy triggers on the move between consecutive quotes, so the
@@ -203,6 +229,7 @@ static void run_ticks(struct fmma_fpga *f, const struct bench_opts *o,
                       FILE *csv, struct run_result *r)
 {
     memset(r, 0, sizeof(*r));
+    r->comparable = image_is_comparable();
     prime(f, o, sw);
 
     /* Start at 1: tick 0 is the priming quote, already published. */
@@ -235,7 +262,8 @@ static void run_ticks(struct fmma_fpga *f, const struct bench_opts *o,
 
         /* The fabric and the transcription must agree, or the latency
          * figure is describing two different strategies. */
-        if (sw_side != FMMA_SIGNAL_NONE && sw_side != sig.side)
+        if (r->comparable && sw_side != FMMA_SIGNAL_NONE &&
+            sw_side != sig.side)
             r->mismatched++;
 
         if (csv)
@@ -329,6 +357,8 @@ int main(int argc, char **argv)
     memset(&cfg, 0, sizeof(cfg));
     cfg.threshold    = o.threshold;
     cfg.max_position = o.max_position;
+    cfg.half_spread  = o.half_spread;
+    cfg.skew         = o.skew;
 
     if (o.load) {
         if (fmma_fpga_load(f, &cfg) != 0) {
@@ -339,6 +369,13 @@ int main(int argc, char **argv)
         fmma_fpga_push_config(f, &cfg);
     }
     fmma_fpga_set_enabled(f, 1);
+
+    if (o.selftest) {
+        struct fmma_selftest_result sr;
+        int rc2 = fmma_selftest_run(f, &sr);
+        fmma_fpga_close(f);
+        return rc2;
+    }
 
     report_loop_rate(f);
 
@@ -354,8 +391,8 @@ int main(int argc, char **argv)
     fmma_stats_init(&st);
     fmma_strategy_init(&sw, o.threshold, o.max_position, 0);
 
-    FMMA_INFO(TAG, "driving %u synthetic ticks, %u us apart",
-              o.ticks, o.interval_us);
+    FMMA_INFO(TAG, "image %s, driving %u synthetic ticks, %u us apart",
+              FPGA_PROGRAM_NAME, o.ticks, o.interval_us);
 
     struct run_result r;
     run_ticks(f, &o, &st, &sw, csv, &r);

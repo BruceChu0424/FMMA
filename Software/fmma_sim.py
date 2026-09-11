@@ -204,8 +204,24 @@ class HaltForever(Exception):
 class Cpu:
     """A cycle-counting model of the FMMA CPU and its 1024-word shared RAM."""
 
-    def __init__(self, mem=None, pc=8, legacy_shifts=False):
-        self.regs = [0] * 16
+    def __init__(self, mem=None, pc=8, legacy_shifts=False, poison=None):
+        """
+        `poison` fills the registers with a value other than zero.
+
+        Real registers do not start at zero.  They hold whatever the
+        previous program left, and on a restart that is a *specific*
+        stale value rather than random junk - which is worse, because
+        it can look plausible.  A model that always starts at zero
+        silently validates programs that depend on it.
+
+        That is not hypothetical here.  market_maker.asm used "R9 == 0"
+        to mean "we have not quoted yet" and never cleared R9 on entry.
+        In this simulator R9 was zero anyway, so every test passed; on
+        hardware the guard never fired and the strategy traded on every
+        tick without ever publishing a quote.  See
+        test_strategy.TestUninitialisedRegisters.
+        """
+        self.regs = [0] * 16 if poison is None else [poison & MASK32] * 16
         self.flags = Flags()
         self.pc = pc & MASK10
         self.mem = list(mem) if mem is not None else [0] * isa.MEM_WORDS

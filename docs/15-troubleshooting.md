@@ -100,6 +100,54 @@ A subtle variant: the heartbeat is moving but `FW_VERSION` stays 0. That is
 the `ISA_MISMATCH` loop — the CPU is alive and deliberately refusing to
 declare itself. Same fix.
 
+### "Alive but will not declare a version" is not always the datapath
+
+That message names the most likely cause, and during bring-up it named
+the wrong one twice. Work through these before rebuilding anything:
+
+| Cause | How to tell | Fix |
+|-------|-------------|-----|
+| The fabric is in a bad state from an earlier wedged program | Any program fails the same way, including one that worked minutes ago | `deploy.py fpga` — reconfiguring resets the CPU without anyone at the bench. `CFG_RESTART` cannot rescue a CPU that jumped into garbage. |
+| The program publishes `FW_VERSION` once and then spins | It is a diagnostic or a one-shot, not one of the strategies | Honour `CFG_RESTART`, as below. |
+| The datapath really is older than the program | `isa_probe` reports a specific failing bit | Rebuild and reprogram the bitstream. |
+
+The second row is a trap worth spelling out. The loader writes the
+entry word, which starts the CPU **immediately**, and only afterwards
+zeroes `FW_VERSION` so a stale value cannot fool it. A short program
+finishes in microseconds — long before that — so it publishes its
+version, the loader wipes it, and nothing ever writes it again. The
+loader then waits five seconds and blames the datapath.
+
+The strategies survive this because `CFG_RESTART` sends them back
+through `INIT`, where they re-publish. Any program the loader drives
+must do the same; `isa_probe.asm` shows the minimum version.
+
+### Which instruction is wrong: `isa_probe.asm`
+
+The strategies' built-in datapath probe reports one bit — "something is
+wrong" — and then spins. That is right for production and useless for
+diagnosis.
+
+```bash
+cd Software && python Assembler.py isa_probe.asm     # becomes the image
+cd .. && python tools/deploy.py --port COM5 push
+python tools/boardctl.py --port COM5 run "cd /root/fmma && make bench && ./fmma-bench --ticks 1"
+python tools/boardctl.py --port COM5 run "cd /root/fmma && ./fmma-probe read 328"
+```
+
+`1023` (`0x3FF`) means all ten checks passed. Anything else names the
+broken instruction — the bit order is in the header of `isa_probe.asm`.
+Word 329 is the number of checks and word 330 is the bit register,
+which must end at 1024; if it does not, the mask cannot be read bit by
+bit and the accumulator itself is suspect.
+
+The same program runs in simulation as `tb_isa_probe`, part of
+`run_sim.sh`. When the two disagree, the difference is the bug — which
+is the whole point of having both.
+
+Remember to re-assemble `trading.asm` afterwards, or the board keeps
+running the probe.
+
 ## 15.5 Readback mismatch
 
 ```

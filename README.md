@@ -36,10 +36,16 @@ Built on the 32-bit CPU designed in ECE 3710 by group 1011.
 
 | | |
 |---|---|
-| Simulation | **green** — 96 Python tests, 63 C unit checks, 9,548 ALU equivalence vectors, 31 full-chain RTL assertions, ~25 s |
+| Simulation | **green** — 99 Python tests, 63 C unit checks, 9,548 ALU equivalence vectors, 31 full-chain RTL assertions, 10 ISA conformance checks, ~25 s |
 | FPGA build | **timing closed** at 50 MHz — see [docs/13](docs/13-test-report.md) |
-| Host program | **builds clean** under `-Wall -Wextra`, links against OpenSSL |
-| On board | **outstanding** — [docs/11](docs/11-board-bringup.md) is the procedure |
+| Host program | **builds clean** under `-Wall -Wextra`; cross-built static for the board |
+| On board | **running** — CPU in the fabric answers a quote in **3 µs min / 5 µs mean** over 5,000 quotes, 0 missed, 0 disagreements with the software model |
+| Live market data | **running** — Coinbase BTC-USD → fabric → decision, 424 quotes / 23 decisions in 90 s |
+| Paper orders | **not run** — the key committed in `d65ee28` must be revoked first ([docs/18](docs/18-security-and-compliance.md)) |
+
+Measured, with the commands that produced every figure, in
+[docs/13](docs/13-test-report.md) §13.5 and
+[docs/14](docs/14-latency-and-performance.md).
 
 ## Start here
 

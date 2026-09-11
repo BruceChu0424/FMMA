@@ -72,6 +72,25 @@ LDI  R3, #HEARTBEAT
 XOR  R11, R11
 XOR  R12, R12
 
+% The resting quotes, and the reason this is not optional.
+%
+% R9 is the guard the tick path tests to decide whether we have
+% quoted yet - "R9 = 0 means we have not".  Clearing the published
+% QUOTE_BID/QUOTE_ASK words below is not the same thing: those are
+% what the host reads, R9 and R10 are what the strategy compares
+% against.  Leave them holding whatever the previous run left and
+% the guard never fires, so the first tick is measured against a
+% stale ask, trades immediately, and a trading tick skips quote
+% construction - which means the quotes are never rebuilt and the
+% strategy trades on every tick for ever without quoting once.
+%
+% That is exactly what it did on hardware.  Simulation missed it
+% because the instruction-set simulator starts every register at
+% zero, so the guard happened to work there; real silicon and any
+% restart do not.  See docs/08 section 8.6.
+XOR  R9,  R9
+XOR  R10, R10
+
 LDI  R4, #CFG_POSITION
 LOAD R13, R4                % adopt the host's view of the inventory
 LDI  R4, #FILL_SEQ

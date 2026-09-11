@@ -15,14 +15,19 @@ source in the same revision.
 | Stage | Result |
 |-------|--------|
 | C: fixed point, JSON, strategy, P&L | **63 / 63 checks pass** |
-| Python: ISA, assembler, simulator, both strategies | **96 / 96 pass** |
+| Python: ISA, assembler, simulator, both strategies | **99 / 99 pass** |
 | RTL: ALU equivalence vs the golden model | **9,548 / 9,548 vectors pass** |
 | RTL: full chain against the protocol | **31 / 31 assertions pass** |
+| RTL: ISA conformance (`tb_isa_probe`) | **10 / 10 checks pass** |
 | RTL: latency budget | **3 / 3 within budget** |
 | Generated-file consistency | **pass** (cross-platform) |
 | FPGA compile | **0 errors**, timing met |
 | Host program compile | **0 errors, 0 warnings** under `-Wall -Wextra` |
-| On-board validation | **not yet run** — [11](11-board-bringup.md) |
+| **Board: ISA conformance** | **10 / 10** — mask `0x3FF`, agrees with simulation |
+| **Board: protocol conformance** | **21 / 21** — `fmma-bench --selftest` |
+| **Board: fabric latency** | **3 µs min, 5 µs mean** over 5,000 quotes; **0 unanswered, 0 disagreements** with the C model |
+| **Board: live market data** | **424 quotes, 23 decisions in 90 s**, no drops or parse errors |
+| Board: live paper orders | **not run** — key rotation pending, §13.5.7 |
 
 ## 13.2 FPGA compile
 
@@ -113,7 +118,7 @@ Testbenches/run_sim.sh
    PASS generated sources are current
 
 == Python: ISA, assembler, simulator, strategy ==
-   Ran 96 tests in 1.4s
+   Ran 99 tests in 1.7s
    OK
    PASS python unit tests
 
@@ -123,16 +128,22 @@ Testbenches/run_sim.sh
 == RTL: full chain, HPS protocol against the real top level ==
    PASS tb_fmma
 
+== RTL: ISA conformance, the same program the board runs ==
+   PASS tb_isa_probe
+
 == RTL: latency budget ==
    PASS tb_latency
-     idle loop period            : 39 cycles = 780 ns
-     quote -> signal (decision)  : 195 cycles = 3900 ns
-     quote -> suppressed (risk)  : 169 cycles = 3380 ns
+       idle loop period            : 39 cycles = 780 ns
+       quote -> signal (decision)  : 195 cycles = 3900 ns
+       quote -> suppressed (risk)  : 169 cycles = 3380 ns
 
 == Summary ==
-   5 passed, 0 failed, 0 skipped
+   6 passed, 0 failed, 0 skipped
    all green
 ```
+
+`tools/sim.sh` runs the same thing in a container, for a machine
+without Icarus Verilog — which on Windows is every machine.
 
 Total wall-clock: about 25 seconds.
 
@@ -182,13 +193,20 @@ docker run --rm -v "$PWD:/work" -w /work/Software debian:bookworm-slim sh -c \
 ```
 
 ```
-cc -O2 -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
+cc -O2 -Wall -Wextra -Wno-unused-parameter -std=gnu99 \
    -DMG_TLS=MG_TLS_OPENSSL -DMG_ENABLE_PACKED_FS=0 \
-   -o marketstream the host application mongoose.c -lssl -lcrypto -lrt -lm
--rwxr-xr-x 1 root root 179704 marketstream
+   -o marketstream the host application mongoose.o -lssl -lcrypto -lrt -lm
+cc -O2 -Wall -Wextra -Wno-unused-parameter -std=gnu99 \
+   -o fmma-probe src/fmma_probe.c src/fmma_socfpga.c src/fmma_log.c -lrt
+cc -O2 -Wall -Wextra -Wno-unused-parameter -std=gnu99 \
+   -o fmma-bench src/fmma_bench.c src/fmma_selftest.c ... -lrt
 ```
 
 **0 errors, 0 warnings.** Linked against OpenSSL 3.
+
+The same three targets also build clean with **gcc 4.6.3 on the board**
+(`fmma-probe` and `fmma-bench`) and with the armhf cross-compiler
+(all three); see §13.5.4.
 
 `make check-generated` also passes **in the container**, which is the test
 that matters: it regenerates the memory map and the program image on Linux
@@ -266,7 +284,7 @@ numbers; [14](14-latency-and-performance.md) says why at more length.
 ### 13.5.3 End to end, live market data
 
 `marketstream` against the Coinbase `ticker` channel for BTC-USD, with
-`--dry-run` so no order leaves the board (see 13.5.5), threshold $2.00:
+`--dry-run` so no order leaves the board (see 13.5.7), threshold $2.00:
 
 ```
 [   0.852] info  feed  connected, subscribed to BTC-USD ticker
@@ -316,7 +334,75 @@ marketstream: ELF 32-bit LSB executable, ARM, EABI5, statically linked,
 
 `deploy.py pushbin` copies the result over HTTP.
 
-### 13.5.5 What was not run, and why
+### 13.5.5 Protocol conformance, on the fabric
+
+`fmma-bench --selftest` drives the real fabric through the properties
+the RTL testbenches assert in simulation. **21 of 21 pass.** The ones
+worth naming:
+
+| Property | Why it matters |
+|----------|----------------|
+| A move smaller than the threshold produces nothing | catches a threshold that was never applied, which "does it trade?" passes happily |
+| `CFG_ENABLE = 0` suppresses every decision, and counts it | the kill switch, verified on silicon rather than asserted |
+| The heartbeat keeps running while disabled | disabled must not mean dead, or the host cannot tell a kill switch from a crash |
+| The fabric clamps the position at `CFG_MAX_POS` | **the limit is enforced in hardware.** The host reported fills truthfully and did nothing else |
+| The reducing side is still allowed at the limit | the part a naive limit gets wrong: at the cap you must still be able to get out |
+| Restart adopts `CFG_POSITION`, including a short one | a restart must not make the CPU forget a position that exists at the broker |
+
+One check initially failed and the specification was wrong, not the
+fabric: `STATUS` is written by the CPU on the decision path, so it
+cannot report a new `CFG_ENABLE` until a quote has been evaluated
+under it. Republishing `STATUS` from the idle loop would cost four to
+six instructions in a thirteen-instruction loop — a 40 % worse
+staleness bound — to echo a setting the host wrote itself. The
+suppression is immediate; only the report lags.
+[07](07-shared-memory-protocol.md) §7.3 now says so, and the test
+checks it the right way round.
+
+### 13.5.6 Two bugs only the board found
+
+Both had passed every simulation, which is the argument for running on
+hardware at all.
+
+**`market_maker.asm` never published a quote.** It trades when a later
+market move reaches the quotes it is already showing, and guards the
+first tick with `R9 == 0` — "we have not quoted yet". `R9` was never
+cleared on entry. `INIT` *did* clear the published `QUOTE_BID` and
+`QUOTE_ASK` words, which is a different thing: those are what the host
+reads, `R9`/`R10` are what the strategy compares against. So the guard
+never fired, the first tick was measured against a stale ask and
+traded — and a tick that trades deliberately skips quote construction.
+The strategy traded on every tick, for ever, without quoting once.
+
+All fourteen quoting tests passed because the simulator starts its
+register file at zero. `fmma_sim.Cpu(poison=...)` and
+`TestUninitialisedRegisters` now close that gap, and were confirmed to
+fail against the unfixed program. With the fix, measured on the board:
+
+| Inventory | Our bid | Our ask | |
+|-----------|---------|---------|---|
+| flat | 49999.00 | 50003.00 | symmetric, $2.00 either side of the mid |
+| long 3 | 49997.50 | 50001.50 | both **down $1.50** = 3 x $0.50 skew |
+| short 3 | 50000.50 | 50004.50 | both **up $1.50** |
+
+**A one-shot program cannot win the loader's race.** The loader writes
+the entry word, which starts the CPU immediately, and only afterwards
+zeroes `FW_VERSION` so a stale value cannot fool it. A program that
+finishes in microseconds publishes its version before that wipe and
+never writes it again; the loader waits five seconds and reports "the
+CPU is alive but will not declare a version — its datapath probe
+failed", which is a confident accusation against the wrong component.
+The strategies survive because `CFG_RESTART` sends them back through
+`INIT`. Documented in [15](15-troubleshooting.md) §15.4, with the
+other two causes that produce the same message.
+
+`Software/isa_probe.asm` came out of chasing the first of these. It
+checks each instruction independently and publishes a bit mask, so the
+next "the fabric disagrees with the model" question has a cheap answer.
+It runs in both places — `tb_isa_probe` in simulation, and on the board
+— and both report `0x3FF`.
+
+### 13.5.7 What was not run, and why
 
 | Not run | Reason |
 |---------|--------|

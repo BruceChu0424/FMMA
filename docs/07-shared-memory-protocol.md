@@ -53,7 +53,7 @@ All indices below are **32-bit word indices**. Byte offset = 4 × word index.
 | 322 | 0x508 | `SIGNAL_TICK` | FPGA -> HPS | The TICK_SEQ value the decision was computed from. Lets the HPS attribute a signal to the market message that caused it, which is how end-to-end latency is measured. |
 | 323 | 0x50C | `SIGNAL_SEQ` | FPGA -> HPS | Incremented after SIGNAL and SIGNAL_TICK are valid. The HPS edge-detects this word; it never writes it, so no signal can be lost by a clear that races the CPU. |
 | 324 | 0x510 | `POSITION` | FPGA -> HPS | Inventory in lots, as a signed 32-bit value. Maintained by the CPU from the fill reports. |
-| 325 | 0x514 | `STATUS` | FPGA -> HPS | Bit 0 running, bit 1 reserved, bit 2 last decision blocked by the risk limit, bit 3 trading disabled by CFG_ENABLE. |
+| 325 | 0x514 | `STATUS` | FPGA -> HPS | Bit 0 running, bit 1 reserved, bit 2 last decision blocked by the risk limit, bit 3 last decision suppressed by CFG_ENABLE. Bits 2 and 3 both describe **the most recently evaluated quote**, not the current configuration — see §7.3. |
 | 326 | 0x518 | `REJECTS` | FPGA -> HPS | Count of decisions the CPU suppressed because of the position limit or CFG_ENABLE. |
 | 327 | 0x51C | `FW_VERSION` | FPGA -> HPS | Protocol version the running CPU program implements, published only after the datapath probe passes. The HPS refuses to trade if this does not match. |
 | 328 | 0x520 | `QUOTE_BID` | FPGA -> HPS | Quoting strategy: the bid the CPU would show, in cents. |
@@ -73,6 +73,32 @@ impossible by construction.
 The testbench checks it: `HPSfgpa2_stub.v` counts same-address write
 collisions and `tb_fmma` step 15 asserts the count is zero after running the
 whole scenario.
+
+### A consequence worth knowing: `STATUS` lags
+
+Because the CPU is the only writer of `STATUS` and it writes it on the
+decision path, **`STATUS` describes the last quote the CPU evaluated,
+not the current configuration.** Disable trading in a quiet market and
+`STATUS` keeps reporting the previous state until the next quote
+arrives.
+
+This is deliberate. Re-publishing `STATUS` from the idle loop would add
+four to six instructions to a thirteen-instruction loop — a 40 % worse
+staleness bound and decision latency
+([14](14-latency-and-performance.md)) — to echo back a setting the host
+wrote itself and can read from `CFG_ENABLE` at any time.
+
+So:
+
+* **`CFG_ENABLE` is authoritative** for "is trading currently allowed".
+  `fmma-probe` prints it alongside `STATUS` for exactly this reason.
+* **`STATUS` is evidence** that the CPU saw the setting and acted on it.
+* The suppression itself is immediate — the very next quote is
+  suppressed and counted in `REJECTS`. Only the report lags.
+
+`fmma-bench --selftest` checks this the right way round: it publishes a
+quote after disabling and then asserts both that nothing was decided
+and that `STATUS` reports it.
 
 ## 7.4 Boot
 

@@ -54,8 +54,9 @@ APP_SRC = src/main.c src/fmma_app.c src/fmma_config.c src/fmma_exec.c \
 # stock DE1-SoC image, with no OpenSSL headers, is the normal state.
 PROBE_SRC = src/fmma_probe.c src/fmma_socfpga.c src/fmma_log.c
 
-BENCH_SRC = src/fmma_bench.c src/fmma_fpga.c src/fmma_socfpga.c \
-            src/fmma_log.c src/fmma_stats.c src/fmma_strategy.c
+BENCH_SRC = src/fmma_bench.c src/fmma_selftest.c src/fmma_fpga.c \
+            src/fmma_socfpga.c src/fmma_log.c src/fmma_stats.c \
+            src/fmma_strategy.c
 
 TEST_SRC = tests/test_units.c src/fmma_fixed.c src/fmma_json.c \
            src/fmma_risk.c src/fmma_strategy.c src/fmma_log.c

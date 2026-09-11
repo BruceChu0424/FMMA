@@ -1,0 +1,33 @@
+# Reproducible RTL simulation environment.
+#
+# Testbenches/run_sim.sh wants Icarus Verilog and Python 3.  Both are
+# easy to install on Linux and awkward on Windows, which is where this
+# project is developed: Quartus ships Questa, but the starter edition
+# needs a licence file that a fresh machine will not have, and there is
+# no iverilog package in winget.
+#
+# So the simulator comes from Debian's archive in a container.  No host
+# installation, the same version for everyone, and it works identically
+# in CI.
+#
+#   docker build -t fmma-sim -f tools/Dockerfile.sim tools
+#   docker run --rm -v "$PWD:/src" -w /src/Testbenches fmma-sim ./run_sim.sh
+#
+# tools/sim.sh does both steps.
+
+FROM debian:bookworm
+
+RUN apt-get update -qq \
+ && apt-get install -y --no-install-recommends \
+        iverilog \
+        python3 \
+        make \
+        gcc \
+        libc6-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+# run_sim.sh and the Makefile both call `python3`; the Python suites
+# need nothing outside the standard library.
+ENV PYTHON=python3
+
+WORKDIR /src

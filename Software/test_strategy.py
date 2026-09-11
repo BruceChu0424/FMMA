@@ -36,8 +36,8 @@ class Board:
     """
 
     def __init__(self, source="trading.asm", thresh=1000, max_pos=3, enable=1,
-                 half_spread=0, skew=0, position=0):
-        self.cpu = sim.Cpu(pc=P.PROGRAM_BASE)
+                 half_spread=0, skew=0, position=0, poison=None):
+        self.cpu = sim.Cpu(pc=P.PROGRAM_BASE, poison=poison)
         self.cpu.load_program(build(source), P.PROGRAM_BASE)
         self.tick = 0
         self.fill_seq = 0
@@ -610,3 +610,67 @@ class TestMarketMaker(unittest.TestCase):
         first = b.r(P.HEARTBEAT)
         b.run(600)
         self.assertGreater(b.r(P.HEARTBEAT), first)
+
+
+class TestUninitialisedRegisters(unittest.TestCase):
+    """Neither strategy may depend on a register starting at zero.
+
+    Real registers do not. They hold whatever the previous program
+    left, and after a CFG_RESTART that is a specific stale value, not
+    random junk - which is worse, because it can look plausible.
+
+    This suite exists because of a bug that shipped past every other
+    test. market_maker.asm used "R9 == 0" to mean "we have not quoted
+    yet" and never cleared R9 on entry. The simulator zeroes the
+    register file, so the guard worked here and all fourteen quoting
+    tests passed. On hardware R9 was stale, the guard never fired, and
+    the strategy traded on the very first tick against a leftover ask.
+    A trading tick skips quote construction, so it never published a
+    quote at all - it just traded, on every tick, for ever.
+
+    Running the same scenarios from a poisoned register file is the
+    cheap way to keep that class of bug out.
+    """
+
+    # Deliberately not random: a fixed value keeps failures
+    # reproducible, and the high bit set catches sign mistakes.
+    POISON = 0xDEADBEEF
+
+    def test_mean_reversion_still_works_from_dirty_registers(self):
+        b = Board(thresh=100, poison=self.POISON)
+        self.assertEqual(b.r(P.FW_VERSION), P.PROTOCOL_VERSION,
+                         "the datapath probe failed from dirty registers")
+        b.publish(10_000_00, 10_000_02)      # first quote only anchors
+        self.assertIsNone(b.take_signal(),
+                          "the first quote after a restart must not trade")
+        b.publish(9_990_00, 9_990_02)        # a big move down
+        sig = b.take_signal()
+        self.assertIsNotNone(sig, "no decision on a move past the threshold")
+        self.assertEqual(sig[0], P.SIGNAL_BUY)
+
+    def test_quoting_still_works_from_dirty_registers(self):
+        b = Board(source="market_maker.asm", half_spread=200, skew=0,
+                  max_pos=100, poison=self.POISON)
+        self.assertEqual(b.r(P.FW_VERSION), P.PROTOCOL_VERSION,
+                         "the datapath probe failed from dirty registers")
+
+        b.publish(10_000_00, 10_002_00)      # mid = 1000100
+        self.assertIsNone(
+            b.take_signal(),
+            "the first quote after a restart must not trade: there are no "
+            "resting quotes for the market to have reached")
+        self.assertEqual(b.r(P.QUOTE_BID), 1000100 - 200,
+                         "no bid was published on the first quote")
+        self.assertEqual(b.r(P.QUOTE_ASK), 1000100 + 200,
+                         "no ask was published on the first quote")
+
+    def test_quoting_keeps_quoting_from_dirty_registers(self):
+        """The failure on hardware was not one bad tick but a deadlock:
+        it traded every tick and therefore never re-quoted."""
+        b = Board(source="market_maker.asm", half_spread=200, skew=0,
+                  max_pos=100, poison=self.POISON)
+        for i in range(5):
+            b.publish(10_000_00 + i, 10_002_00 + i)
+            mid2 = (10_000_00 + i) + (10_002_00 + i)
+            self.assertEqual(b.r(P.QUOTE_BID), (mid2 - 400) // 2)
+            self.assertEqual(b.r(P.QUOTE_ASK), (mid2 + 400) // 2)

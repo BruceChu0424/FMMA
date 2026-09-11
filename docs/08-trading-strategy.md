@@ -128,6 +128,49 @@ to move per lot held. `test_skew_makes_the_reducing_side_easier_to_reach`
 pins the behaviour down: with the same market move, a flat book does not
 trade and a long book sells.
 
+Measured on the board, with a market of 50000.00 / 50002.00,
+`CFG_HALF_SPREAD = 200` and `CFG_SKEW = 50`:
+
+| Inventory | Our bid | Our ask | |
+|-----------|---------|---------|---|
+| flat | 49999.00 | 50003.00 | symmetric, $2.00 either side of the mid |
+| long 3 | 49997.50 | 50001.50 | both **down $1.50** = 3 x $0.50 |
+| short 3 | 50000.50 | 50004.50 | both **up $1.50** |
+
+### The bootstrap trap, and what it cost
+
+This strategy trades when a *later* market move reaches the quotes it
+was already showing, so the tick path has to test the market against
+the previous tick's quotes and not this tick's - quotes derived from
+the current mid sit inside the current spread by construction and
+could never be reached. The guard for the very first tick, when there
+are no previous quotes, is `R9 == 0`.
+
+`R9` was not cleared on entry.
+
+Clearing the published `QUOTE_BID` and `QUOTE_ASK` words is not the
+same thing, and `INIT` did do that: those are what the *host* reads,
+`R9` and `R10` are what the *strategy* compares against. With `R9`
+holding whatever the previous program left, the guard never fired, the
+first tick was measured against a stale ask and traded - and because a
+tick that trades deliberately skips quote construction, the quotes were
+never built. The result was a strategy that traded on every single tick
+and never published a quote in its life.
+
+Every simulation passed. The instruction-set simulator starts its
+register file at zero, so `R9` happened to be zero and the guard
+happened to work; all fourteen quoting tests were green. Real silicon
+does not start at zero, and neither does a `CFG_RESTART`.
+
+Two things came out of it. `fmma_sim.Cpu` now takes a `poison=`
+argument that fills the register file with a non-zero value, and
+`test_strategy.TestUninitialisedRegisters` runs both strategies from a
+poisoned file - those tests fail on the unfixed program, which is the
+only way to know a regression test is worth having. And
+`Software/isa_probe.asm` exists so the next "the fabric is doing
+something the model does not" question has a cheap answer; see
+[15](15-troubleshooting.md).
+
 ### When it trades
 
 ```

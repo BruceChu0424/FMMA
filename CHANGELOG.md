@@ -1,5 +1,79 @@
 # Changelog
 
+## 2026-09 (d) — two bugs the board found
+
+Both had passed every simulation, which is the argument for running on
+hardware at all.
+
+### Fixed
+
+* **`market_maker.asm` never published a quote.** It guards the first
+  tick with `R9 == 0` — "we have not quoted yet" — and never cleared
+  `R9` on entry. `INIT` did clear the published `QUOTE_BID`/`QUOTE_ASK`
+  words, which is a different thing: those are what the host reads,
+  `R9`/`R10` are what the strategy compares against. The guard never
+  fired, the first tick was measured against a stale ask and traded,
+  and a tick that trades deliberately skips quote construction — so it
+  traded on every tick, for ever, without quoting once.
+
+  All fourteen quoting tests passed because `fmma_sim` starts its
+  register file at zero. Fixed in the program, and in the model: see
+  below. With the fix, inventory skew measured on the board is exact —
+  flat quotes straddle the mid, long 3 moves both quotes down by
+  3 x `CFG_SKEW`, short 3 moves them up by the same.
+
+* **`fmma-probe` claimed a version mismatch that was not one.** A
+  program that publishes `FW_VERSION` once and then spins cannot win
+  the loader's race: the loader writes the entry word, which starts the
+  CPU immediately, and only afterwards zeroes `FW_VERSION`. The
+  strategies survive via `CFG_RESTART`; anything else must too.
+  [15](docs/15-troubleshooting.md) §15.4 now lists all three causes of
+  "alive but will not declare a version", in likelihood order — the
+  commonest is a fabric left in a bad state by an earlier wedge, which
+  `deploy.py fpga` clears without anyone at the bench.
+
+### Added
+
+* **`fmma_sim.Cpu(poison=...)`** and
+  `test_strategy.TestUninitialisedRegisters`. A model that starts every
+  register at zero silently validates programs that depend on it. The
+  poison value is fixed, so failures reproduce, and has its high bit
+  set, so sign mistakes surface. Confirmed to fail against the unfixed
+  program — a regression test nobody has seen fail is not yet one.
+* **`Software/isa_probe.asm`** and **`Testbenches/tb_isa_probe.v`** — an
+  ISA conformance program that checks each instruction independently
+  and publishes a bit mask, run in *both* simulation and on the board.
+  The strategies' built-in datapath probe reports one bit and spins,
+  which is right for production and useless for diagnosis. Both places
+  now report `0x3FF`.
+  * Its first version advanced the bit position with `LSH`, one of the
+    instructions under test, so a broken shifter returned a garbage
+    mask instead of one clear bit. It uses `ADD R11, R11` now.
+* **`fmma-bench --selftest`** (`fmma_selftest.c`) — 21 protocol
+  conformance checks against the real fabric: liveness, the seqlock,
+  the threshold, the kill switch, the position limit,
+  reduce-at-the-limit, restart. The hardware half of
+  [12](docs/12-verification-plan.md). **21/21 pass.**
+* **`tools/Dockerfile.sim` and `tools/sim.sh`** — the verification
+  suite in a container. Quartus ships Questa but its starter edition
+  wants a licence a fresh machine will not have, and there is no
+  iverilog package in winget.
+* `FPGA_PROGRAM_NAME` in the generated header, so the bench can say
+  which strategy it loaded — and skip the software cross-check when the
+  image is not `trading.asm`, which `fmma_strategy.c` models. It was
+  reporting "fabric and software disagree" for the quoting strategy,
+  where they disagree by design. A false alarm in a verification tool
+  is worse than no check: it teaches you to ignore the line.
+
+### Documented
+
+* [07](docs/07-shared-memory-protocol.md) §7.3: `STATUS` describes the
+  last quote the CPU evaluated, not the current configuration. A
+  conformance check caught the discrepancy and the specification was
+  the wrong half — republishing `STATUS` from the idle loop would cost
+  40 % of the staleness bound to echo a setting the host wrote itself.
+  `CFG_ENABLE` is authoritative; `STATUS` is evidence the CPU saw it.
+
 ## 2026-09 (c) — running on hardware
 
 The design was brought up on a real DE1-SoC and measured. Everything
