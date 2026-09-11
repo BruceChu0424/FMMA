@@ -25,7 +25,7 @@ source in the same revision.
 | Host program compile | **0 errors, 0 warnings** under `-Wall -Wextra` |
 | **Board: ISA conformance** | **10 / 10** — mask `0x3FF`, agrees with simulation |
 | **Board: protocol conformance** | **21 / 21** — `fmma-bench --selftest` |
-| **Board: fabric latency** | **3 µs min, 5 µs mean** over 5,000 quotes; **0 unanswered, 0 disagreements** with the C model |
+| **Board: fabric latency** | **4 µs min, 5 µs mean, 8 µs p99** over 5,000 quotes; **0 unanswered, 0 disagreements** with the C model |
 | **Board: live market data** | **424 quotes, 23 decisions in 90 s**, no drops or parse errors |
 | Board: live paper orders | **not run** — key rotation pending, §13.5.7 |
 
@@ -265,9 +265,9 @@ the answer. 5 000 ticks, 300 µs apart:
 |---------|--------|
 | Ticks published | 5 000 |
 | Decisions read back | **5 000** — none missed, none late |
-| Quote → decision, min / mean | **3 µs / 5 µs** |
-| Quote → decision, p99 / max | **16 µs / 17 µs** |
-| Same strategy on the ARM core | mean 999 ns, max 13.1 µs |
+| Quote → decision, min / mean | **4 µs / 5 µs** |
+| Quote → decision, p99 / max | **8 µs / 17 µs** |
+| Same strategy on the ARM core | mean 1 247 ns, max 11.7 µs |
 | Side disagreements, fabric vs software | **0 of 5 000** |
 
 The last row is the equivalence result: the assembly running in the

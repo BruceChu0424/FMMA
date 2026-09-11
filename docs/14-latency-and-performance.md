@@ -7,8 +7,9 @@ so.
 ## 14.1 The headline, and the honest caveat
 
 **The fabric turns a quote into a trading decision in 3.9 µs,
-deterministically — measured on hardware at 3 µs minimum, 5 µs mean over
-5 000 quotes, with the software model agreeing on all 5 000.**
+deterministically — measured on hardware at 3–4 µs minimum and 5 µs
+mean over 5 000 quotes, with the software model agreeing on all
+5 000.**
 
 **That is about 0.01 % of the end-to-end latency of this system.** The other
 99.99 % is the public internet between Coinbase and a lab in Logan, Utah.
@@ -84,7 +85,7 @@ the two agree:
 
 | | Simulation | Hardware, 5 000 samples |
 |---|---|---|
-| Best case (quote lands just before the tick check) | 156 cycles = 3.12 µs | **3 µs** (min) |
+| Best case (quote lands just before the tick check) | 156 cycles = 3.12 µs | **3–4 µs** (min, run to run) |
 | Worst case (quote lands just after it) | 195 cycles = 3.90 µs | — |
 | Typical | — | **5 µs** (mean) |
 | Idle loop | 39 cycles = 780 ns | **0.78 µs** (1 282 151 loops/s) |
@@ -137,7 +138,7 @@ figures. Measured on the board over the same 5 000 quotes:
 | | Mean | Max | What it includes |
 |---|---:|---:|---|
 | Fabric, quote → decision | 5 µs | 17 µs | full round trip: bridge write, CPU loop, decide, host poll |
-| ARM core, same strategy | **0.999 µs** | **13.1 µs** | arithmetic only, no bridge |
+| ARM core, same strategy | **1.2 µs** | **11.7 µs** | arithmetic only, no bridge |
 
 The comparison is deliberately narrow, and the narrowness is the point.
 The ARM figure times **only the arithmetic** — it does not include the
@@ -147,7 +148,7 @@ The result is the one that was predicted, and it is not flattering to
 the fabric on the mean:
 
 > For arithmetic this simple, a 925 MHz application processor has a mean
-> latency roughly five times *lower* than a 50 MHz soft CPU reached
+> latency roughly four times *lower* than a 50 MHz soft CPU reached
 > across a bridge. What the fabric provides is a **bounded worst case**
 > and freedom from the operating system. In a real system the fabric's
 > win comes from replacing the interpreted instruction stream with a
@@ -158,7 +159,7 @@ Claiming the FPGA is simply "faster" here would be false, and the
 instrumentation exists precisely so nobody has to guess.
 
 Note the **maxima**, though, which is where the argument actually lives.
-The ARM's worst case is 13.1× its mean; the fabric's is 3.4× its mean,
+The ARM's worst case is 9.4x its mean; the fabric's is 3.4x its mean,
 and the fabric's spread is dominated by *when the host polls*, not by
 anything happening in the fabric. The fabric's own execution jitter is
 zero (§14.4). Over a longer live run the ARM's tail grew to 22.1 µs
@@ -173,6 +174,15 @@ twenty times worse than it is:
 |---|---:|---:|---:|
 | `--poll-ms 1` (default) | 5 µs | 157 µs | 1082 µs |
 | `--poll-ms 0` (busy) | 5 µs | **12 µs** | 48 µs |
+
+Busy-polling does not remove the tail entirely. A later 253-quote run
+with `--poll-ms 0` still recorded a single 1079 µs sample among twelve;
+the other eleven were 5–53 µs. That one is the Linux scheduler taking
+the core away — `marketstream` is an ordinary `SCHED_OTHER` process
+doing TLS work on the same CPU. It is the clearest illustration in this
+document of what the fabric is actually for: the FPGA's contribution to
+that sample was still about 5 µs, and it would have been 5 µs however
+loaded the host was.
 
 A decision that lands just after a poll waits most of a millisecond to
 be noticed. That is **the host, not the fabric** — and it is the single
