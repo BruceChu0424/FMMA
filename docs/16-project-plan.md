@@ -28,12 +28,17 @@ The fourteen items the team defined at the start, and where each one stands.
 | 6 | WebSocket client on the HPS | done | `ticker` channel, TLS via OpenSSL, reconnect with backoff |
 | 7 | JSON parsing and field extraction | done | `parse_scaled`, `json_str_field`, exact integer parsing |
 | 8 | Write parsed fields to shared RAM | done | `publish_tick` |
-| 9 | **End-to-end latency measurement (software)** | done | `SIGNAL_TICK` attribution + the tick-time ring; [14](14-latency-and-performance.md) |
-| 10 | FPGA simulation and hardware validation | simulation done; **board validation outstanding** | [12](12-verification-plan.md), [11](11-board-bringup.md) |
+| 9 | **End-to-end latency measurement (software)** | done, **measured on hardware** | `SIGNAL_TICK` attribution + the tick-time ring; 5 µs mean over 5,000 quotes; [14](14-latency-and-performance.md) |
+| 10 | FPGA simulation and hardware validation | **done, both** | 6 simulation stages + 31 hardware checks; [13](13-test-report.md) §13.5 |
 | 11 | **Risk limits and inventory** | done | `POSITION`, `CFG_MAX_POS`, `REJECTS`; [09](09-risk-management.md) |
 | 12 | FPGA ↔ HPS signalling | done | `SIGNAL_SEQ` edge detection |
 | 13 | HPS receives FPGA trade signals | done | `poll_fpga` → Alpaca |
-| 14 | **Latency profiling, HPS versus FPGA** | done | `--bench`; [14](14-latency-and-performance.md) §14.5 |
+| 14 | **Latency profiling, HPS versus FPGA** | done, **measured on hardware** | `fmma-bench` and `--bench`; both figures in [14](14-latency-and-performance.md) §14.5 |
+
+All fourteen items are implemented and, as of 11 September 2026, all
+fourteen have been exercised on the board. The one thing still not
+done is a *live paper order*, which is blocked on rotating the leaked
+key rather than on any engineering — see §16.5.
 
 Items 5, 9, 11 and 14 were the four that had no implementation at all before
 this revision; they are the substance of what changed.
@@ -72,9 +77,15 @@ processors, no risk layer, no way to restart the CPU without reconfiguring
 the FPGA, no latency instrumentation, and the host build produced a binary
 with TLS compiled out.
 
-**Verification built.** From zero automated tests to 96 Python tests, 63 C unit
+**Verification built.** From zero automated tests to 99 Python tests, 63 C unit
 checks, 9,548 ALU equivalence vectors against the RTL, a 31-assertion
-full-chain testbench and a timing-budget testbench, all behind one script.
+full-chain testbench, an ISA conformance testbench and a timing-budget
+testbench, all behind one script — plus two suites that run the same
+properties against the real fabric (21 protocol checks, 10 ISA checks).
+
+**It runs.** The CPU is in the fabric on a real DE1-SoC, answering live
+Coinbase quotes in about 5 µs, with the software model agreeing on all
+5,000 quotes of a synthetic sweep. [13](13-test-report.md) §13.5.
 
 ## 16.5 Remaining work
 
@@ -82,9 +93,10 @@ full-chain testbench and a timing-budget testbench, all behind one script.
 
 | Task | Owner | Notes |
 |------|-------|-------|
-| On-board validation of the full chain | team | [11](11-board-bringup.md) is the procedure; §11.8 lists the checks. This is the only thing simulation cannot substitute for. |
-| Record the `--bench` output | team | Fills in [13](13-test-report.md) §13.5. |
-| Rotate the leaked Alpaca key | key owner | [18](18-security-and-compliance.md) §18.4. **Do this first.** |
+| **Rotate the leaked Alpaca key** | key owner | [18](18-security-and-compliance.md) §18.4. **The only thing blocking the last step.** |
+| One live paper order, end to end | team | Everything else is done and measured. Drop `--dry-run` once the key is rotated; check the fill against Alpaca's dashboard and the fabric's `POSITION`. |
+| ~~On-board validation of the full chain~~ | — | **Done** — [13](13-test-report.md) §13.5. |
+| ~~Record the latency figures~~ | — | **Done** — §13.5.2 and §13.5.3. |
 
 ### Worth doing, in rough priority order
 
