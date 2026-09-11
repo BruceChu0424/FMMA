@@ -15,10 +15,21 @@ is in the QSF, because two definitions of the same module would collide.)
 | `HEX0[6:0]` | out | `AE26 AE27 AE28 AG27 AF28 AG28 AH28` | 3.3-V LVTTL | debug display |
 | `HPS_DDR3_*` | various | placed by the HPS hard IP | SSTL-15 / differential SSTL-15 | HPS SDRAM conduit |
 
-The top level contains only three things: the Qsys system, the CPU, and the
-reset/display glue. All of the interesting behaviour is in the CPU
+The top level is deliberately thin - it says how four things are wired to
+the board and nothing else:
+
+| Module | File | Responsibility |
+|--------|------|----------------|
+| `HPSfgpa2` | generated | the HPS plus the 4 KB dual-port on-chip RAM |
+| `cpu_core` | `Code/cpu_core.v` | the CPU: datapath, control, register bank, next-PC |
+| `reset_ctrl` | `Code/reset_ctrl.v` | power-on reset and the `KEY[0]` button |
+| `decoder` | `Code/decoder.v` | the seven-segment debug display |
+
+All of the interesting behaviour is in the CPU
 ([03](03-cpu-microarchitecture.md)) and the memory contract
-([07](07-shared-memory-protocol.md)).
+([07](07-shared-memory-protocol.md)). Splitting `cpu_core` out of the top
+level also means the CPU can be instantiated against a plain memory in a
+testbench without dragging in the HPS.
 
 ## 5.2 The Qsys system
 
@@ -70,13 +81,19 @@ There is no PLL in the fabric. The HPS SDRAM PLL belongs to the hard IP.
 
 ## 5.4 Reset
 
+`Code/reset_ctrl.v`:
+
 ```
                  KEY[0] ──► 2-stage synchroniser ──┐
-                                                    ├──► reset_active
+                                                    ├──► active
    power-on 5-bit counter (16 clocks) ─────────────┘
-                                                    ├──► cpu_rst  (active high)
-                                                    └──► fsm_rst  (active low)
+                                                    ├──► rst_high  (registers)
+                                                    └──► rst_low_n (control FSM)
 ```
+
+The counter is held at zero while the button is down, so the full
+16-clock release delay applies again after every press, and bounce needs
+no separate filter: each bounce edge simply extends the reset.
 
 The two polarities are inherited: the register bank, PC, IR and flag register
 take an active-high reset, the control FSM an active-low one. Both are driven
@@ -118,6 +135,28 @@ keeps 29 I/O paths from being silently excluded from sign-off as
 *unconstrained* rather than deliberately *unconstrained*.
 
 The HPS SDRAM interface brings its own constraints in through the `.qip`.
+
+## 5.6a Configuration scheme
+
+```tcl
+set_global_assignment -name STRATIXV_CONFIGURATION_SCHEME "PASSIVE PARALLEL X16"
+set_global_assignment -name USE_CONFIGURATION_DEVICE OFF
+```
+
+On a Cyclone V SoC the FPGA is normally configured by the HPS rather than
+from a flash device: U-Boot or Linux feeds an `.rbf` to the FPGA manager,
+which drives the fabric's Fast Passive Parallel port. The board's MSEL
+switches select the width, and the DE1-SoC ships set for FPPx16.
+
+`STRATIXV_CONFIGURATION_SCHEME` is the correct assignment name for this
+device - Quartus reuses the Stratix-V-family name for Cyclone V, and
+`CYCLONEV_CONFIGURATION_SCHEME` is rejected as illegal.
+
+Note that this does **not** change the contents of the `.rbf`: an RBF is
+the raw configuration data stream, and the width is how the controller
+clocks it in, not what is in the file. Setting it is correct practice and
+makes the intent explicit, but if HPS configuration fails the cause is
+somewhere else - [11](11-board-bringup.md) §11.4 covers what to check.
 
 ## 5.7 Known issue: the HPS SDRAM parameters are placeholders
 
@@ -166,8 +205,10 @@ From [`../HFTTop.qsf`](../HFTTop.qsf), in compile order:
 | `Software/HPSfgpa2/synthesis/submodules/altera_mem_if_dll_cyclonev.sv` | EMIF, hand-supplied |
 | `Software/HPSfgpa2/synthesis/submodules/HPSfgpa2_mm_interconnect_0_avalon_st_adapter_error_adapter_0.sv` | interconnect, hand-supplied |
 | `HFTTop.sdc` | timing constraints |
-| `Software/HFTtop.v` | top level |
-| `Code/PC.v`, `IR`, `FR`, `registerFinal`, `MUX16to1`, `MUX2to1`, `ALUFinal`, `FSMTrial`, `disp`, `Encoder4to16`, `decoder.v` | the CPU |
+| `Software/HFTtop.v` | top level: ports, Qsys, cpu_core, reset_ctrl, display |
+| `Code/cpu_core.v` | the CPU, assembled from the modules below |
+| `Code/reset_ctrl.v` | power-on reset and the reset button |
+| `Code/PC.v`, `IR`, `FR`, `registerFinal`, `MUX16to1`, `MUX2to1`, `ALUFinal`, `FSMTrial`, `disp`, `Encoder4to16`, `decoder.v` | CPU submodules |
 
 Note that most of the CPU files have no `.v` extension. That is inherited
 from the ECE 3710 archive; Quartus is told their type explicitly in the QSF

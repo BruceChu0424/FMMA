@@ -1,63 +1,101 @@
 # FMMA - HPS-side build
 #
-# Build natively on the DE1-SoC HPS Linux:
-#     sudo apt-get install build-essential libssl-dev python3
-#     make
-#     sudo ./marketstream
-#
-# Cross compiling from a PC works too:
-#     make CC=arm-linux-gnueabihf-gcc
-#
-# Targets:
-#     make              build ./marketstream
-#     make protocol     regenerate the shared memory map (C/asm/Verilog)
-#     make program      re-assemble trading.asm -> fpga_program.*
-#     make check        run the Python test suites
-#     make check-generated  fail if a generated file is out of date
-#     make clean
+#   make              build ./marketstream and ./fmma-probe
+#   make probe        just the diagnostic (no TLS, no mongoose, builds in 1 s)
+#   make test         run the host unit tests
+#   make check        unit tests + the Python suites
+#   make protocol     regenerate the shared memory map (C / asm / Verilog)
+#   make program      re-assemble trading.asm -> fpga_program.*
+#   make check-generated   fail if a generated file is stale
+#   make static       a self-contained binary, for a board with no libssl-dev
+#   make clean
 #
 # ---------------------------------------------------------------------
-# Two build settings are not optional, and both were learned the hard
-# way (see docs/10-build-guide.md):
+# Two settings are not optional, and both cost real time to discover.
 #
-#  -std=gnu11, not -std=c11.  Strict ISO mode defines __STRICT_ANSI__,
-#  which hides clock_gettime, CLOCK_MONOTONIC, usleep, mmap and
-#  MAP_FAILED behind glibc's feature-test macros; the build fails with
-#  a wall of implicit-declaration errors.
+#   -std=gnu99, not -std=c11 and not -std=gnu11.  The DE1-SoC images in
+#   circulation carry gcc 4.6, which has no C11 mode at all; and strict
+#   ISO mode (-std=c99) hides clock_gettime, usleep, mmap and MAP_FAILED
+#   behind glibc's feature-test macros.  gnu99 is the intersection that
+#   works on both the 2012-era image and a current toolchain.
 #
-#  MG_TLS=MG_TLS_OPENSSL, not MG_TLS_BUILTIN.  Without any -DMG_TLS,
-#  mongoose compiles with TLS disabled and every wss:// and https://
-#  connection fails at the handshake - silently, because the program
-#  turns mongoose logging down.  With the *builtin* stack it still
-#  fails for Coinbase: mongoose's own code rejects P-384 certificate
-#  intermediates ("reject secp386 for now"), and Coinbase is fronted by
-#  Cloudflare, which uses one.  OpenSSL connects to both endpoints.
+#   MG_TLS=MG_TLS_OPENSSL, not the built-in stack.  With no -DMG_TLS at
+#   all, mongoose compiles with TLS disabled and every wss:// and
+#   https:// connection fails at the handshake - silently, because the
+#   program turns mongoose's logging down.  With MG_TLS_BUILTIN it still
+#   fails for Coinbase: mongoose rejects P-384 certificate
+#   intermediates, and Coinbase is behind Cloudflare, which uses one.
 # ---------------------------------------------------------------------
 
 CC       ?= gcc
-CFLAGS   ?= -O2 -Wall -Wextra -Wno-unused-parameter -std=gnu11
+PYTHON   ?= python3
+
+WARN      = -Wall -Wextra -Wno-unused-parameter
+CFLAGS   ?= -O2 $(WARN) -std=gnu99
 CPPFLAGS += -DMG_TLS=MG_TLS_OPENSSL -DMG_ENABLE_PACKED_FS=0
 LDLIBS   += -lssl -lcrypto -lrt -lm
 
-PYTHON   ?= python3
+# mongoose is vendored third-party code; it does not get our warning flags
+MONGOOSE_CFLAGS = -O2 -std=gnu99 -w
 
-TARGET    = marketstream
-SOURCES   = MarketStream.c mongoose.c
+APP       = marketstream
+PROBE     = fmma-probe
+UNITTEST  = fmma-unittest
+
+APP_SRC = src/main.c src/fmma_app.c src/fmma_config.c src/fmma_exec.c \
+          src/fmma_feed.c src/fmma_fixed.c src/fmma_fpga.c src/fmma_json.c \
+          src/fmma_log.c src/fmma_risk.c src/fmma_socfpga.c \
+          src/fmma_stats.c src/fmma_strategy.c src/fmma_tls.c
+
+TEST_SRC = tests/test_units.c src/fmma_fixed.c src/fmma_json.c \
+           src/fmma_risk.c src/fmma_strategy.c src/fmma_log.c
+
 GENERATED = fmma_protocol.h fmma_protocol.inc ../Testbenches/fmma_protocol.vh \
             fpga_program.h fpga_program.hex fpga_program.bin \
             fpga_program.mif fpga_program.lst
-HEADERS   = mongoose.h fmma_protocol.h fpga_program.h
 
-.PHONY: all protocol program check check-generated clean help
+.PHONY: all probe test check check-generated protocol program static clean help
 
-all: $(TARGET)
-
-$(TARGET): $(SOURCES) $(HEADERS)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(SOURCES) $(LDLIBS)
+all: $(APP) $(PROBE)
 
 # ---------------------------------------------------------------------
-# Generated sources.  The memory map lives in protocol.py and is
-# emitted into C, assembly and Verilog so the three cannot drift.
+# The application
+# ---------------------------------------------------------------------
+
+$(APP): $(APP_SRC) mongoose.o fmma_protocol.h fpga_program.h
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(APP_SRC) mongoose.o $(LDLIBS)
+
+mongoose.o: third_party/mongoose.c third_party/mongoose.h
+	$(CC) $(MONGOOSE_CFLAGS) $(CPPFLAGS) -c -o $@ third_party/mongoose.c
+
+# The probe deliberately has no dependencies beyond libc, so it still
+# builds when TLS or the network stack is the thing that is broken.
+probe: $(PROBE)
+$(PROBE): src/fmma_probe.c fmma_protocol.h
+	$(CC) $(CFLAGS) -o $@ src/fmma_probe.c
+
+# ---------------------------------------------------------------------
+# A self-contained binary, for a board with no libssl-dev.
+#
+# The DE1-SoC images in circulation ship libssl.so but not its headers,
+# and their distributions are long past end of life, so apt cannot
+# install them.  Building this on a machine that does have the headers
+# and copying the result across is usually quicker than fixing that.
+#
+# Static glibc would normally break DNS, because getaddrinfo needs NSS
+# plugins at run time.  It does not here: mongoose resolves names
+# itself over UDP and never calls getaddrinfo.
+# ---------------------------------------------------------------------
+
+static: $(APP_SRC) third_party/mongoose.c fmma_protocol.h fpga_program.h
+	$(CC) $(CFLAGS) $(CPPFLAGS) -static -o $(APP) \
+	      $(APP_SRC) third_party/mongoose.c \
+	      -lssl -lcrypto -lrt -lm -lpthread -ldl
+	$(CC) $(CFLAGS) -static -o $(PROBE) src/fmma_probe.c
+
+# ---------------------------------------------------------------------
+# Generated sources.  The memory map lives in protocol.py and is emitted
+# into C, assembly and Verilog so the three cannot drift apart.
 # ---------------------------------------------------------------------
 
 protocol: fmma_protocol.h fmma_protocol.inc ../Testbenches/fmma_protocol.vh
@@ -76,18 +114,19 @@ program: fpga_program.h
 fpga_program.h: trading.asm fmma_protocol.inc Assembler.py fmma_isa.py
 	$(PYTHON) Assembler.py trading.asm --quiet
 
-../Testbenches/alu_vectors.txt: gen_alu_vectors.py fmma_sim.py fmma_isa.py
-	$(PYTHON) gen_alu_vectors.py
-
 # ---------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------
 
-check: program
+test: $(UNITTEST)
+	./$(UNITTEST)
+
+$(UNITTEST): $(TEST_SRC) fmma_protocol.h
+	$(CC) $(CFLAGS) -o $@ $(TEST_SRC)
+
+check: test program
 	$(PYTHON) -m unittest discover -p 'test_*.py' -v
 
-# Regenerate everything into a scratch directory and diff, so a
-# hand-edited generated file cannot slip through review.
 check-generated:
 	@set -e; tmp=$$(mktemp -d); \
 	$(PYTHON) protocol.py --emit-c   -o $$tmp/fmma_protocol.h; \
@@ -102,11 +141,7 @@ check-generated:
 	echo "generated files are up to date"
 
 clean:
-	rm -f $(TARGET) *.o
+	rm -f $(APP) $(PROBE) $(UNITTEST) *.o
 
 help:
-	@echo "make            build ./$(TARGET)"
-	@echo "make protocol   regenerate the shared memory map"
-	@echo "make program    re-assemble trading.asm"
-	@echo "make check      run the Python test suites"
-	@echo "make clean"
+	@sed -n '2,12p' Makefile | sed 's/^# \?//'

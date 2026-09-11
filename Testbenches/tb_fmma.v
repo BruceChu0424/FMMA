@@ -169,7 +169,7 @@ module tb_fmma;
         // ---- 1: the CPU waits for a program ----
         $display("\n[1] CPU parks until a program appears");
         repeat (200) @(posedge CLOCK_50);
-        check(dut.pc_out, `FMMA_PROGRAM_BASE, "PC parked at the entry point");
+        check(dut.pc, `FMMA_PROGRAM_BASE, "PC parked at the entry point");
         rd(`FMMA_HEARTBEAT, v);
         check(v, 32'd0, "heartbeat still zero");
 
@@ -308,7 +308,7 @@ module tb_fmma;
         $display("\n[14] KEY[0] resets the CPU");
         KEY = 1'b0;
         repeat (50) @(posedge CLOCK_50);
-        check(dut.pc_out, `FMMA_PROGRAM_BASE, "PC held at the entry point");
+        check(dut.pc, `FMMA_PROGRAM_BASE, "PC held at the entry point");
         KEY = 1'b1;
         repeat (3000) @(posedge CLOCK_50);
         rd(`FMMA_FW_VERSION, v);

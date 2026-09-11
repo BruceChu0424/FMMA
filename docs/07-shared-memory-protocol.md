@@ -5,7 +5,7 @@ in the fabric. Both sides must agree on every item here, so neither side owns
 the table: it is generated from
 [`../Software/protocol.py`](../Software/protocol.py) into
 
-* `Software/fmma_protocol.h` — for `MarketStream.c`
+* `Software/fmma_protocol.h` — for the host application
 * `Software/fmma_protocol.inc` — for `trading.asm`
 * `Testbenches/fmma_protocol.vh` — for the testbenches
 
@@ -230,7 +230,7 @@ store buffer.
 | Position | lots | ±2,147,483,647 | signed |
 | Sequence numbers | — | wrap at 2³² | both sides only ever compare for equality, so wrapping is harmless |
 
-`MarketStream.c` clamps prices to the range above and logs when it does,
+the host application clamps prices to the range above and logs when it does,
 rather than letting a bad quote wrap into the sign bit. Version 1 scaled
 prices by 10,000 with no clamp, which put BTC's sum-of-bid-and-ask about 7 %
 below the point where every comparison inverts.

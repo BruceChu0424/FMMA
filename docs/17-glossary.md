@@ -128,7 +128,7 @@ is compared.
 **Golden model** — `Software/fmma_sim.py`, the reference implementation of
 the CPU that the RTL is checked against.
 
-**Host** — the ARM side running Linux and `MarketStream.c`. Also *HPS side*.
+**Host** — the ARM side running Linux and the host application. Also *HPS side*.
 
 **ISS** — instruction set simulator. Same thing as the golden model.
 

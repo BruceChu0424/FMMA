@@ -14,10 +14,10 @@ Built on the 32-bit CPU designed in ECE 3710 by group 1011.
             │                                              ▲
             ▼                                              │ POST /v2/orders
   ┌───────────────── HPS: ARM Cortex-A9, Linux ────────────┴──────────┐
-  │  MarketStream.c                                                   │
+  │  marketstream  (13 modules under Software/src/)                   │
   │    parse "97431.02" -> 9743102   (exact integers, no float)       │
   │    publish through a seqlock, poll SIGNAL_SEQ for an edge         │
-  │    execute, check the status, report the fill back                │
+  │    execute, follow the order to a fill, report it back            │
   └───────────────┬──────────────────────────────────▲────────────────┘
                   │  lightweight AXI bridge, 0xFF200000, 50 MHz
   ┌───────────────▼──────────────────────────────────┴────────────────┐
@@ -26,9 +26,9 @@ Built on the 32-bit CPU designed in ECE 3710 by group 1011.
   └───────────────▲──────────────────────────────────┬────────────────┘
                   │  port s2: fetch / load / store   │
   ┌───────────────┴──────────────────────────────────▼────────────────┐
-  │  Custom 32-bit RISC CPU running trading.asm                       │
+  │  Custom 32-bit RISC CPU running trading.asm / market_maker.asm    │
   │    16 registers · 3 cycles per instruction · 780 ns loop          │
-  │    mean-reversion strategy + position limits, enforced in fabric  │
+  │    strategy + position limits, enforced in the fabric             │
   └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -36,7 +36,7 @@ Built on the 32-bit CPU designed in ECE 3710 by group 1011.
 
 | | |
 |---|---|
-| Simulation | **green** — 82 Python tests, ~9,500 ALU equivalence vectors, 31 full-chain RTL assertions, all in 25 s |
+| Simulation | **green** — 96 Python tests, 63 C unit checks, 9,548 ALU equivalence vectors, 31 full-chain RTL assertions, ~25 s |
 | FPGA build | **timing closed** at 50 MHz — see [docs/13](docs/13-test-report.md) |
 | Host program | **builds clean** under `-Wall -Wextra`, links against OpenSSL |
 | On board | **outstanding** — [docs/11](docs/11-board-bringup.md) is the procedure |
@@ -71,24 +71,35 @@ the CPU is out of reset and the shared RAM came up zeroed.
 
 ### Run it on the board
 
+`tools/deploy.py` automates the whole bring-up over the serial console
+and the network — see [docs/11](docs/11-board-bringup.md):
+
 ```bash
-cd Software
-make                                    # needs build-essential and libssl-dev
+python tools/deploy.py net      # DHCP on the board
+python tools/deploy.py fpga     # program the FPGA, with a safety check
+python tools/deploy.py push     # copy the software
+python tools/deploy.py build
+python tools/deploy.py probe ramtest
+```
+
+then, on the board:
+
+```bash
 export APCA_API_KEY_ID=...              # paper keys; never commit them
 export APCA_API_SECRET_KEY=...
 sudo -E ./marketstream --dry-run --verbose
 ```
 
 ```
-=== FMMA: BTC-USD -> FPGA -> Alpaca (protocol v2) ===
-Shared RAM mapped at 0xFF200000 (1024 words).
-[LOADER] Writing 154 program words at word 8 (entry word last).
-[LOADER] Program verified.
-[LOADER] CPU running: protocol v2, heartbeat 41233, position 0.
-[FEED] connected, subscribed to BTC-USD ticker
-[MARKET] bid 97431.02  ask 97431.98
->>> [FPGA] BUY  (tick 34, 812 us after the quote was published, position 0)
-[EXEC] dry run: would send buy 0.001 BTCUSD
+=== FMMA: BTC-USD -> FPGA -> paper trading (protocol v2) ===
+[  0.003] info  fpga     shared RAM mapped at 0xFF200000, 1024 words
+[  0.011] info  fpga     writing 154 program words at word 8, entry word last
+[  0.019] info  fpga     program verified
+[  0.121] info  fpga     CPU running: protocol v2, heartbeat 128341, position 0
+[  0.402] info  feed     connected, subscribed to BTC-USD ticker
+[  1.233] debug feed     bid 97431.02  ask 97431.98
+[  3.891] info  app      >>> FPGA BUY  (tick 8, 812 us after the quote, fabric position 0)
+[  3.891] info  exec     dry run: would send buy 0.001 BTCUSD
 ```
 
 Drop `--dry-run` to trade the paper account. `--no-fpga` runs the whole
@@ -99,16 +110,21 @@ thing on a laptop with no board and no root.
 | Path | Contents |
 |------|----------|
 | `Software/HFTtop.v` | FPGA top level (`Code/HFTtop.v` is a synced archive copy) |
-| `Code/` | The CPU: ALU, control FSM, PC, IR, flags, register bank, muxes, 7-seg decoder |
+| `Code/cpu_core.v` | The CPU, assembled from the modules below |
+| `Code/reset_ctrl.v` | Power-on reset and the `KEY[0]` button |
+| `Code/` | ALU, control FSM, PC, IR, flags, register bank, muxes, 7-seg decoder |
 | `Software/HPSfgpa2*` | Platform Designer system: HPS + 4 KB dual-port on-chip RAM |
 | `Software/protocol.py` | **The memory map.** Generates the C, assembly and Verilog copies |
 | `Software/fmma_isa.py` | **The ISA.** What the assembler and the simulator are both built from |
 | `Software/Assembler.py` | Assembler → `.h`, `.hex`, `.bin`, `.mif`, `.lst` |
 | `Software/fmma_sim.py` | Golden-reference instruction set simulator |
-| `Software/trading.asm` | The strategy |
-| `Software/MarketStream.c` | The host program: feed, loader, execution, instrumentation |
+| `Software/trading.asm` | The mean-reversion strategy |
+| `Software/market_maker.asm` | Two-sided quoting with inventory skew |
+| `Software/src/` | The host program: 13 modules, plus `fmma_probe.c` |
+| `Software/tests/` | C unit tests (no board needed) |
 | `Software/test_*.py` | Python test suites |
 | `Testbenches/` | RTL testbenches, the Qsys stub, and `run_sim.sh` |
+| `tools/` | `boardctl.py` (serial console), `deploy.py` (bring-up) |
 | `docs/` | The engineering record |
 
 ## The memory map, in brief
@@ -157,6 +173,13 @@ there are several, and two of them will produce a binary that silently
 cannot connect to anything.
 
 **On the board:** `build-essential`, `libssl-dev`, and a default route.
+The older DE1-SoC images have gcc 4.6 and no OpenSSL headers; in that
+case cross-compile with `make static` ([docs/10](docs/10-build-guide.md) §10.4a).
+
+> **Never read the HPS-to-FPGA bridge unless the FPGA is configured.**
+> Cyclone V has no bus timeout, so the access never completes and the
+> board hangs hard enough to need a power cycle. Everything here checks
+> `/sys/class/fpga/fpga0/status` first.
 
 ## Measured
 

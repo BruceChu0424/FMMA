@@ -3,6 +3,25 @@
 Symptom → cause → fix. Start with §15.1, which resolves most of it in thirty
 seconds.
 
+> ## The board has stopped responding entirely
+>
+> No console output, Ctrl-C does nothing, ping may or may not answer.
+>
+> **Cause:** something read the HPS-to-FPGA bridge while the fabric was
+> not configured with a design that answers at that address. Cyclone V
+> has no bus timeout, so the AXI transaction never completes and the
+> core that issued it is stuck forever.
+>
+> **Fix:** pull the power, wait five seconds, plug it back in. There is
+> no software recovery. The SD card reloads the stock bitstream at boot,
+> so the board comes back in a known state.
+>
+> **Prevention:** never touch `0xFF200000` unless
+> `/sys/class/fpga/fpga0/status` says `user mode` *and* `dmesg` shows no
+> `fpgamgr timeout` since the last configuration. `tools/deploy.py` and
+> every program in `Software/src` check this; `--force` bypasses it and
+> should not be used casually.
+
 ## 15.1 First, look at HEX0
 
 The seven-segment digit shows the low nibble of the CPU's program counter,
@@ -78,8 +97,9 @@ The host is writing somewhere that is not the shared RAM.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `CLOCK_MONOTONIC undeclared`, `implicit declaration of clock_gettime/usleep/mmap` | `-std=c11` hides POSIX behind `__STRICT_ANSI__` | Use `-std=gnu11`. The Makefile already does; check you have not overridden `CFLAGS`. |
-| `openssl/ssl.h: No such file` | `libssl-dev` is missing | `apt-get install libssl-dev` |
+| `unrecognized command line option '-std=gnu11'` | the board's gcc is 4.6, which has no C11 mode | The Makefile uses `-std=gnu99`; check you have not overridden `CFLAGS`. |
+| `CLOCK_MONOTONIC undeclared`, `implicit declaration of clock_gettime/usleep/mmap` | a strict `-std=c99`/`c11` hides POSIX behind `__STRICT_ANSI__` | Use `-std=gnu99`. |
+| `openssl/ssl.h: No such file` | `libssl-dev` is missing, and on the older images the distribution is EOL so apt cannot fetch it | Cross-compile instead: [11](11-board-bringup.md) §11.7, `make static`. |
 | `fpga_program.h: No such file` | The assembler has not been run | `make program`, or `python3 Assembler.py trading.asm` |
 | `undefined reference to mg_tls_init` | mongoose built without TLS | Ensure `-DMG_TLS=MG_TLS_OPENSSL` reaches the compile. |
 

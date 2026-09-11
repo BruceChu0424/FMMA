@@ -182,7 +182,7 @@ docker run --rm -v "$PWD:/work" -w /work/Software debian:bookworm-slim sh -c \
 ```
 cc -O2 -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
    -DMG_TLS=MG_TLS_OPENSSL -DMG_ENABLE_PACKED_FS=0 \
-   -o marketstream MarketStream.c mongoose.c -lssl -lcrypto -lrt -lm
+   -o marketstream the host application mongoose.c -lssl -lcrypto -lrt -lm
 -rwxr-xr-x 1 root root 179704 marketstream
 ```
 

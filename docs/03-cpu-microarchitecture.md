@@ -124,7 +124,7 @@ a half-written program. No reset handshake between the two sides is needed.
 This is `load_program` in
 [`../Testbenches/tb_fmma.v`](../Testbenches/tb_fmma.v) and
 `load_fpga_program` in
-[`../Software/MarketStream.c`](../Software/MarketStream.c), and step 1 of
+[`../Software/src/`](../Software/src), and step 1 of
 `tb_fmma` asserts that the CPU really does stay parked.
 
 ## 3.5 Reset

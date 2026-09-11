@@ -1,5 +1,16 @@
 # 8. Trading strategy
 
+## 8.0 Two strategies
+
+| File | What it does | Words | Use it when |
+|------|--------------|------:|-------------|
+| `trading.asm` | mean-reversion trigger on the mid | 154 | the default; simplest to explain and to test |
+| `market_maker.asm` | two-sided quoting with inventory skew | 174 | demonstrating what the project is named for |
+
+Both implement the same protocol, the same risk layer and the same
+restart semantics; they differ only in the decision. Sections 8.1-8.5
+describe `trading.asm`; §8.6 describes `market_maker.asm`.
+
 ## 8.1 What the CPU decides
 
 For each new quote:
@@ -90,34 +101,69 @@ line flag (`--threshold`, `--max-pos`), not a rebuild. On a 50 MHz CPU with
 a 780 ns loop the cost of reading a configuration word per decision is
 irrelevant, and the flexibility is worth far more.
 
-## 8.6 What is not implemented: two-sided quoting
+## 8.6 The quoting strategy
 
-The project is called a market maker, and a real market maker quotes both
-sides continuously and earns the spread. This one does not, and the gap
-should be stated plainly rather than papered over.
-
-The memory map reserves what a quoting strategy would need —
-`CFG_HALF_SPREAD`, `CFG_SKEW`, `QUOTE_BID`, `QUOTE_ASK` — and the
-arithmetic is within reach of this CPU:
+`market_maker.asm` is the second strategy in the repository, and it is
+the one the project is named for. Where `trading.asm` reacts to a move,
+this one continuously shows a two-sided quote and trades when the market
+comes to its price.
 
 ```
-mid2   = bid + ask
-skew   = position * CFG_SKEW          (MUL exists; lean against inventory)
-quote_bid2 = mid2 - 2*CFG_HALF_SPREAD - 2*skew
-quote_ask2 = mid2 + 2*CFG_HALF_SPREAD - 2*skew
+mid2  = bid + ask                       (twice the mid, as above)
+skew2 = 2 * position * CFG_SKEW         lean against inventory
+qbid2 = mid2 - 2*CFG_HALF_SPREAD - skew2
+qask2 = mid2 + 2*CFG_HALF_SPREAD - skew2
 ```
 
-What is *not* within reach is everything around it: resting limit orders,
-cancel/replace, acknowledgement tracking, partial fills, and an order
-lifecycle state machine on the host. That is a substantially larger project
-than the decision arithmetic, and it needs a broker API that supports fast
-cancel/replace — Alpaca's REST endpoint, at tens of milliseconds per call,
-does not.
+`QUOTE_BID` and `QUOTE_ASK` are published every tick, halved once at the
+end with a single right shift - which is only possible because the 2026
+rebuild fixed the shifter, and is why this program's startup probe
+checks `LSH` as well as `SUB`.
 
-So the honest description of this system is: **a latency-optimised
-decision engine with a market-making memory map, running a mean-reversion
-trigger.** [16](16-project-plan.md) lists two-sided quoting as the first item
-of future work and [01](01-requirements.md) §1.2 puts it out of scope.
+**The skew is the interesting part.** Long inventory pushes *both*
+quotes down: the ask becomes easier to lift, so the position is more
+likely to be reduced, and the bid becomes harder to hit, so it is less
+likely to grow. Short inventory does the reverse. `CFG_SKEW` is how far
+to move per lot held. `test_skew_makes_the_reducing_side_easier_to_reach`
+pins the behaviour down: with the same market move, a flat book does not
+trade and a long book sells.
+
+### When it trades
+
+```
+market bid >= our ask   ->  we would be lifted  ->  SELL
+market ask <= our bid   ->  we would be hit     ->  BUY
+```
+
+The check runs against the quotes computed on the **previous** tick, not
+the current one. That is not an implementation detail, it is the whole
+semantics of a resting order: quotes derived from the current mid sit
+inside the current spread by construction, so a quote can only ever be
+reached by a later market move. Checking against quotes from the same
+tick would mean never trading at all - which is exactly the bug the
+first version of this file had, and what
+`test_first_tick_only_quotes` and `test_a_rise_lifts_our_ask` now guard.
+
+A tick that trades leaves the quotes in place until the next one, which
+is also what a desk does: you re-quote once the fill is known.
+
+```
+python Assembler.py market_maker.asm
+sudo -E ./marketstream --half-spread 200 --skew 50 --max-pos 5
+```
+
+### What is still missing
+
+This simulates resting quotes rather than resting them: the host sends a
+*market* order when our price is reached. Real quoting needs resting
+limit orders with cancel/replace, acknowledgement tracking and an order
+lifecycle state machine - and a broker API that can cancel and replace
+in microseconds, which a REST endpoint at tens of milliseconds cannot.
+
+So the honest description of the system remains: **a latency-optimised
+decision engine with a market-making memory map, running either a
+mean-reversion trigger or a simulated two-sided quote.**
+[16](16-project-plan.md) tracks the rest.
 
 ## 8.7 What this strategy is not
 

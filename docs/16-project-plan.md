@@ -23,7 +23,7 @@ The fourteen items the team defined at the start, and where each one stands.
 | 1 | AXI bridge and memory map research | done | [07](07-shared-memory-protocol.md) |
 | 2 | On-chip RAM instantiation | done | `HPSfgpa2.qsys`, [05](05-fpga-design.md) §5.2 |
 | 3 | AXI bridge configuration | done | lightweight H2F at 0xFF200000, base 0x0000 |
-| 4 | HPS userspace memory-mapped I/O | done | `map_bridge` in `MarketStream.c` |
+| 4 | HPS userspace memory-mapped I/O | done | `fmma_fpga_open` in `src/fmma_fpga.c` |
 | 5 | **Data consistency and synchronisation protocol** | done | seqlock + publish-last + `OLD_DATA`; [07](07-shared-memory-protocol.md) §7.5–7.8 |
 | 6 | WebSocket client on the HPS | done | `ticker` channel, TLS via OpenSSL, reconnect with backoff |
 | 7 | JSON parsing and field extraction | done | `parse_scaled`, `json_str_field`, exact integer parsing |
@@ -38,10 +38,10 @@ The fourteen items the team defined at the start, and where each one stands.
 Items 5, 9, 11 and 14 were the four that had no implementation at all before
 this revision; they are the substance of what changed.
 
-**Inventory skew** — part of item 11 as originally worded — is not
-implemented, because it only means something for a two-sided quoting
-strategy. The memory map reserves `CFG_SKEW` and `QUOTE_BID`/`QUOTE_ASK` for
-it; see [08](08-trading-strategy.md) §8.6.
+**Inventory skew** — part of item 11 as originally worded — is now
+implemented, in `market_maker.asm`: the quoting strategy leans both
+quotes against the position by `CFG_SKEW` per lot and publishes them in
+`QUOTE_BID`/`QUOTE_ASK`. [08](08-trading-strategy.md) §8.6.
 
 ## 16.3 Timeline
 
@@ -50,7 +50,7 @@ it; see [08](08-trading-strategy.md) §8.6.
 | ECE 3710 | Autumn 2025 | The 32-bit CPU: ALU, control FSM, register bank, assembler, Fibonacci demo. HPS integration attempted, not completed. |
 | Spring 2026 | Jan–Apr | Project defined, advisor secured, milestone presentation. HPS↔FPGA link brought up: writes from Linux visible on the seven-segment display. |
 | Summer 2026 | May–Aug | Paused. |
-| Autumn 2026 | Sep | **This revision.** Protocol v2, risk layer, latency instrumentation, datapath and ALU fixes, verification suite, documentation. |
+| Autumn 2026 | Sep | **This revision.** Protocol v2, risk layer, latency instrumentation, datapath and ALU fixes, a modular host application, the quoting strategy, board tooling, verification suite, documentation. |
 | Remaining | — | On-board validation of the full chain (§16.5). |
 
 ## 16.4 What changed in this revision
@@ -72,9 +72,9 @@ processors, no risk layer, no way to restart the CPU without reconfiguring
 the FPGA, no latency instrumentation, and the host build produced a binary
 with TLS compiled out.
 
-**Verification built.** From zero automated tests to 82 Python tests, ~9,500
-ALU equivalence vectors against the RTL, a 31-assertion full-chain testbench
-and a timing-budget testbench, all behind one script.
+**Verification built.** From zero automated tests to 96 Python tests, 63 C unit
+checks, 9,548 ALU equivalence vectors against the RTL, a 31-assertion
+full-chain testbench and a timing-budget testbench, all behind one script.
 
 ## 16.5 Remaining work
 
@@ -92,10 +92,10 @@ and a timing-budget testbench, all behind one script.
 |------|-----|
 | Correct the HPS SDRAM parameters in the Qsys system | The committed handoff describes the wrong memory and must never be used to build a preloader. Needs a full Quartus Standard install. [05](05-fpga-design.md) §5.7. |
 | A fixed-function decision datapath | The honest answer to "why an FPGA". ~70× faster than the CPU running the same algorithm. [14](14-latency-and-performance.md) §14.7. |
-| Two-sided quoting with inventory skew | What would make this a market maker rather than a trigger. [08](08-trading-strategy.md) §8.6. |
-| Order-status polling | Turns "accepted" into a real fill report and closes the largest risk gap. [09](09-risk-management.md) §9.6. |
+| Resting limit orders with cancel/replace | `market_maker.asm` simulates quoting with market orders; real quoting needs a broker API that can cancel and replace quickly. [08](08-trading-strategy.md) §8.6. |
 | A doorbell instead of polling | Removes up to 780 ns of staleness. |
-| P&L tracking and a loss limit | The one risk control that is entirely absent. |
+| Fractional inventory | The protocol counts whole lots, so a partial fill is rounded. [09](09-risk-management.md) §9.6. |
+| Query the broker's position at startup | Closes the "host died mid-order" gap; the `--position` hook already exists. |
 | Gate-level simulation | Needs a Questa licence. |
 
 ## 16.6 Responsibilities
@@ -121,8 +121,8 @@ and a timing-budget testbench, all behind one script.
 | Deliverable | State |
 |-------------|-------|
 | Working FPGA bitstream | `output_files/HFTTop.sof`, timing closed |
-| CPU program and toolchain | `trading.asm`, assembler, simulator, all tested |
-| Host application | `MarketStream.c`, builds clean with `-Wall -Wextra` |
+| CPU program and toolchain | `trading.asm` and `market_maker.asm`, assembler, simulator, all tested |
+| Host application | thirteen modules under `Software/src/`, builds clean with `-Wall -Wextra` |
 | Verification suite | `Testbenches/run_sim.sh`, green |
 | Documentation | this `docs/` tree |
 | Demonstration | pending §16.5 |

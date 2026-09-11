@@ -42,7 +42,7 @@ bad()    { printf '   \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 skip()   { printf '   \033[33mSKIP\033[0m %s\n' "$1"; skipped=$((skipped + 1)); }
 
 RTL="$SOFTWARE/HFTtop.v \
-     $HERE/../Code/PC.v $HERE/../Code/IR $HERE/../Code/FR \
+     $HERE/../Code/cpu_core.v $HERE/../Code/reset_ctrl.v $HERE/../Code/PC.v $HERE/../Code/IR $HERE/../Code/FR \
      $HERE/../Code/registerFinal $HERE/../Code/MUX16to1 $HERE/../Code/MUX2to1 \
      $HERE/../Code/ALUFinal $HERE/../Code/FSMTrial $HERE/../Code/disp \
      $HERE/../Code/Encoder4to16 $HERE/../Code/decoder.v"

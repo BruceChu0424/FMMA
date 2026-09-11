@@ -27,7 +27,7 @@ intended to be profitable.
    export APCA_API_KEY_ID='PK...'
    export APCA_API_SECRET_KEY='...'
    ```
-2. `MarketStream.c` reads them with `getenv` and nothing else. There is no
+2. the host application reads them with `getenv` and nothing else. There is no
    configuration file, no default and no fallback; with no keys the program
    runs and logs the orders it would have sent.
 3. Use `sudo -E` so the environment survives. (Plain `sudo` strips it, and
@@ -64,7 +64,7 @@ repository and are still reachable in its git history.**
 | | |
 |---|---|
 | Commit | `d65ee28`, titled "Add key" |
-| File | `Software/MarketStream.c`, lines 20–21 at that revision |
+| File | `Software/src/`, lines 20–21 at that revision |
 | Current state | HEAD reads the credentials from the environment; the literals are gone from the working tree |
 | Still exposed | **Yes.** The old blob remains in history and on any clone or fork, including the remote. |
 
@@ -85,7 +85,7 @@ credentials with one command.
    ```bash
    # every collaborator must re-clone afterwards; coordinate first
    git clone --mirror <remote> fmma-clean && cd fmma-clean
-   git filter-repo --path Software/MarketStream.c --invert-paths   # or use BFG
+   git filter-repo --path Software/src/fmma_app.c --invert-paths   # or use BFG
    # re-add the current file, then
    git push --force --all
    ```

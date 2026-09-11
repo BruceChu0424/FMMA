@@ -35,7 +35,8 @@ class Board:
     same order, so a bug in the handshake shows up in both places.
     """
 
-    def __init__(self, source="trading.asm", thresh=1000, max_pos=3, enable=1):
+    def __init__(self, source="trading.asm", thresh=1000, max_pos=3, enable=1,
+                 half_spread=0, skew=0, position=0):
         self.cpu = sim.Cpu(pc=P.PROGRAM_BASE)
         self.cpu.load_program(build(source), P.PROGRAM_BASE)
         self.tick = 0
@@ -44,8 +45,11 @@ class Board:
         self.w(P.CFG_THRESH, thresh)
         self.w(P.CFG_MAX_POS, max_pos)
         self.w(P.CFG_ENABLE, enable)
+        self.w(P.CFG_HALF_SPREAD, half_spread)
+        self.w(P.CFG_SKEW, skew)
+        self.w(P.CFG_POSITION, position & 0xFFFFFFFF)
         # Let the initialisation sequence finish.
-        self.run(200)
+        self.run(300)
 
     # -- raw access ---------------------------------------------------------
 
@@ -468,3 +472,141 @@ class TestTiming(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestMarketMaker(unittest.TestCase):
+    """Two-sided quoting: market_maker.asm.
+
+    This is the strategy the project is named for. It computes a bid and
+    an ask around the mid, leans them against inventory, and signals when
+    a LATER market move reaches the price it was showing.
+    """
+
+    SRC = "market_maker.asm"
+
+    def mm(self, **kw):
+        kw.setdefault("source", self.SRC)
+        kw.setdefault("half_spread", 200)      # $2.00
+        kw.setdefault("max_pos", 100)
+        return Board(**kw)
+
+    def test_publishes_its_version(self):
+        b = self.mm()
+        self.assertEqual(b.r(P.FW_VERSION), P.PROTOCOL_VERSION,
+                         "the datapath probe (SUB and LSH immediates) failed")
+
+    def test_quotes_straddle_the_mid_when_flat(self):
+        b = self.mm(half_spread=200, skew=0)
+        b.publish(10_000_00, 10_002_00)        # mid = 1000100
+        self.assertEqual(b.r(P.QUOTE_BID), 1000100 - 200)
+        self.assertEqual(b.r(P.QUOTE_ASK), 1000100 + 200)
+
+    def test_first_tick_only_quotes(self):
+        b = self.mm()
+        b.publish(10_000_00, 10_002_00)
+        self.assertIsNone(b.take_signal(),
+                          "nothing to trade against on the first tick")
+
+    def test_no_signal_while_the_market_stays_inside_our_quotes(self):
+        b = self.mm(half_spread=500)
+        b.publish(10_000_00, 10_002_00)
+        b.publish(10_000_50, 10_002_50)        # a 50-cent drift
+        self.assertIsNone(b.take_signal())
+
+    def test_a_rise_lifts_our_ask(self):
+        b = self.mm(half_spread=200)
+        b.publish(10_000_00, 10_002_00)        # quote 1000100 +/- 200
+        b.publish(10_010_00, 10_012_00)        # market bid now above our ask
+        sig = b.take_signal()
+        self.assertIsNotNone(sig)
+        self.assertEqual(sig[0], P.SIGNAL_SELL)
+
+    def test_a_fall_hits_our_bid(self):
+        b = self.mm(half_spread=200)
+        b.publish(10_000_00, 10_002_00)
+        b.publish(9_990_00, 9_992_00)          # market ask now below our bid
+        sig = b.take_signal()
+        self.assertIsNotNone(sig)
+        self.assertEqual(sig[0], P.SIGNAL_BUY)
+
+    def test_a_wider_spread_trades_less(self):
+        tight = self.mm(half_spread=50)
+        tight.publish(10_000_00, 10_002_00)
+        tight.publish(10_003_00, 10_005_00)
+        self.assertIsNotNone(tight.take_signal(), "a tight quote is reached")
+
+        wide = self.mm(half_spread=5000)       # $50 each side
+        wide.publish(10_000_00, 10_002_00)
+        wide.publish(10_003_00, 10_005_00)
+        self.assertIsNone(wide.take_signal(), "a wide quote is not")
+
+    def test_long_inventory_skews_both_quotes_down(self):
+        flat = self.mm(half_spread=200, skew=50, position=0)
+        flat.publish(10_000_00, 10_002_00)
+        bid0, ask0 = flat.r(P.QUOTE_BID), flat.r(P.QUOTE_ASK)
+
+        long_ = self.mm(half_spread=200, skew=50, position=4)
+        long_.publish(10_000_00, 10_002_00)
+        self.assertEqual(long_.signed(P.POSITION), 4, "inventory adopted")
+        self.assertEqual(bid0 - long_.r(P.QUOTE_BID), 200, "bid skewed down")
+        self.assertEqual(ask0 - long_.r(P.QUOTE_ASK), 200, "ask skewed down")
+
+    def test_short_inventory_skews_both_quotes_up(self):
+        flat = self.mm(half_spread=200, skew=50, position=0)
+        flat.publish(10_000_00, 10_002_00)
+        bid0 = flat.r(P.QUOTE_BID)
+
+        short = self.mm(half_spread=200, skew=50,
+                        position=(-4) & 0xFFFFFFFF)
+        short.publish(10_000_00, 10_002_00)
+        self.assertEqual(short.signed(P.POSITION), -4)
+        self.assertEqual(short.r(P.QUOTE_BID) - bid0, 200, "bid skewed up")
+
+    def test_skew_makes_the_reducing_side_easier_to_reach(self):
+        """The point of the skew: when long, a rise trades sooner."""
+        # Quotes come from tick 1: mid2 = 2_000_200, half-spread 200.
+        #   flat  ask2 = 2_000_600  -> needs the bid at 1_000_300
+        #   long  ask2 = 1_999_800  -> needs the bid at   999_900
+        # A tick-2 bid of 1_000_100 falls between the two.
+        flat = self.mm(half_spread=200, skew=100, position=0)
+        flat.publish(10_000_00, 10_002_00)
+        flat.publish(10_001_00, 10_003_00)
+
+        long_ = self.mm(half_spread=200, skew=100, position=4)
+        long_.publish(10_000_00, 10_002_00)
+        long_.publish(10_001_00, 10_003_00)
+
+        self.assertIsNone(flat.take_signal(), "flat: the move is too small")
+        sig = long_.take_signal()
+        self.assertIsNotNone(sig, "long: the skew brought the ask within reach")
+        self.assertEqual(sig[0], P.SIGNAL_SELL)
+
+    def test_risk_limit_blocks_a_buy_at_the_long_limit(self):
+        b = self.mm(half_spread=200, max_pos=2, position=2)
+        b.publish(10_000_00, 10_002_00)
+        rejects = b.r(P.REJECTS)
+        b.publish(9_990_00, 9_992_00)          # would hit our bid -> BUY
+        self.assertIsNone(b.take_signal())
+        self.assertEqual(b.r(P.REJECTS), rejects + 1)
+        self.assertTrue(b.r(P.STATUS) & P.STATUS_RISK_BLOCKED)
+
+    def test_disable_switch_suppresses_quoting_signals(self):
+        b = self.mm(half_spread=200, enable=0)
+        b.publish(10_000_00, 10_002_00)
+        b.publish(10_010_00, 10_012_00)
+        self.assertIsNone(b.take_signal())
+        self.assertGreater(b.r(P.REJECTS), 0)
+        self.assertTrue(b.r(P.STATUS) & P.STATUS_DISABLED)
+
+    def test_fills_move_the_inventory(self):
+        b = self.mm(max_pos=100)
+        b.report_fill(P.FILL_BOUGHT, 3)
+        self.assertEqual(b.signed(P.POSITION), 3)
+        b.report_fill(P.FILL_SOLD, 5)
+        self.assertEqual(b.signed(P.POSITION), -2)
+
+    def test_heartbeat_runs(self):
+        b = self.mm()
+        first = b.r(P.HEARTBEAT)
+        b.run(600)
+        self.assertGreater(b.r(P.HEARTBEAT), first)

@@ -33,7 +33,7 @@ shared memory.
                |                                                ^
   =============|================================================|===========
    HPS         v            ARM Cortex-A9, Linux                |
-   ┌──────────────────────────── MarketStream.c ───────────────────────────┐
+   ┌──────────────────────────── the host application ───────────────────────────┐
    │  mongoose event loop                                                  │
    │    parse "10432.17" -> 1043217          (integer, no float)           │
    │    publish through the seqlock          (docs/07)                     │
@@ -81,7 +81,7 @@ gives the decision latency and what a fixed-function pipeline would save.
 
 | Component | Where | Language | Responsibility |
 |-----------|-------|----------|----------------|
-| `MarketStream.c` | ARM / Linux | C11 (gnu11) | Feed, loader, execution, fills, instrumentation |
+| the host application | ARM / Linux | C11 (gnu11) | Feed, loader, execution, fills, instrumentation |
 | `mongoose.c/.h` | ARM / Linux | C (vendored) | TCP/TLS/HTTP/WebSocket |
 | `protocol.py` | build host | Python | The memory map, emitted to C, assembly and Verilog |
 | `Assembler.py`, `fmma_isa.py` | build host | Python | Assembler and the ISA definition |

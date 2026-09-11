@@ -24,6 +24,8 @@ not the account.
 | Hardware reset | board | `KEY[0]` | the engine stops and restarts from a known state |
 | Software restart | fabric | `CFG_RESTART` | the engine restarts without touching the board |
 | Order cooldown | host | `--cooldown`, default 1 s | bursts are spaced out |
+| Loss limit | host | `--max-loss`, 0 = off | stops trading and disables the fabric past a realised+unrealised loss |
+| Stale-feed watchdog | host | `--stale-feed`, default 60 s | suppresses orders while market data is not arriving |
 | Dry run | host | `--dry-run` | decisions are logged, nothing is sent |
 | Fixed order size | host | `--qty`, default 0.001 BTC | one signal can only ever move one lot |
 | Price range clamp | host | `FMMA_PRICE_MAX` | a malformed quote cannot invert the comparisons |
@@ -91,6 +93,36 @@ quotes and counting the trades it *would* have made, which is exactly what
 you want while diagnosing something. Ctrl-C on the host also sets it, so
 killing the program stops the engine trading rather than leaving it armed.
 
+## 9.5a P&L and the loss limit
+
+`fmma_risk.c` keeps average-cost inventory accounting on the host:
+adding to a position moves the average, reducing it realises the
+difference against that average, and crossing through zero does both.
+`fmma_risk_mark` marks the remaining position against the current mid.
+
+```
+--max-loss 5000      # stop trading at a 50.00 loss (price units)
+```
+
+When realised plus unrealised loss reaches the limit, the host halts:
+it stops sending orders **and** writes `CFG_ENABLE = 0`, so the fabric
+stops signalling too. The halt is sticky - it needs a restart, not a
+recovery in price - because a limit that un-trips itself is not a limit.
+
+This is the one control that has to be on the host: the fabric has no
+notion of money and no price history to mark against.
+`test_units.c` covers the accounting (both directions, averaging in,
+crossing through zero) and the limit.
+
+## 9.5b The stale-feed watchdog
+
+If the feed dies, the CPU keeps its anchor and simply never sees another
+quote, so it never trades - safe, but silent. The host now notices:
+after `--stale-feed` milliseconds without a tick it logs once and
+`fmma_risk_check` suppresses orders until data resumes. That matters
+because a decision computed from a quote a minute old is not a decision
+worth acting on.
+
 ## 9.6 What is not protected
 
 Stated plainly, because a risk document that only lists what it does is
@@ -98,10 +130,8 @@ worse than none.
 
 | Not protected | Why, and what would fix it |
 |---------------|----------------------------|
-| **Partial fills** | The host reports one lot on a 2xx response. A real system would poll the order until it reached a terminal state and report the executed quantity. Paper market orders fill whole and immediately, so the approximation holds here and nowhere else. |
-| **Rejected-then-filled orders** | Only 2xx reports a fill. An order that is accepted and later cancelled by the broker would leave the CPU thinking it holds inventory it does not. Needs the order-status poll above. |
-| **Loss limits** | There is no P&L tracking at all, so there is no daily loss limit and no drawdown stop. This is the largest gap; it needs the host to track average entry price and mark to market. |
-| **Stale-data trading** | If the feed dies, the CPU keeps its last anchor and simply never sees another quote, so it never trades — which is safe. But nothing detects "the feed has been quiet for 60 seconds" and says so. A watchdog on `TICK_SEQ` would. |
+| **Fractional fills** | The protocol carries inventory in whole lots, so a partially filled order is still reported as one lot. `fmma_exec` reads `filled_qty` and warns when it is zero, but anything between 0 and 1 would need a fractional inventory field. |
+| **Fill price accuracy** | The host uses the broker's `filled_avg_price` when it supplies one and the mid at submission otherwise, so P&L on a fill without a reported price is approximate. |
 | **Fat-finger prices** | The clamp stops arithmetic overflow, not a quote that is wrong but in range. A sanity band around the previous mid would. |
 | **Host death mid-order** | If the process dies after the POST and before the fill report, the CPU's inventory is stale until the next restart supplies `CFG_POSITION`. Querying the broker's position at startup would close this; the hook (`--position`) exists, the query does not. |
 | **Multiple instances** | Nothing stops two copies of the host program driving the same board. The second would corrupt the first's sequence numbers. A lock file would. |

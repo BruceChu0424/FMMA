@@ -1,6 +1,88 @@
 # Changelog
 
-## 2026-09 — protocol v2, risk layer, verification
+## 2026-09 (b) — modular host application, quoting strategy, board tooling
+
+Follows the protocol v2 work below, on the same day. This round is about
+making the code something a team can keep working on, and about getting
+it onto real hardware.
+
+### Restructured
+
+* **The host application was one 917-line file; it is now thirteen
+  modules** under `Software/src/`, each with one responsibility and a
+  header that explains it: `fmma_app` (wiring), `fmma_config`,
+  `fmma_feed`, `fmma_fpga`, `fmma_exec`, `fmma_risk`, `fmma_strategy`,
+  `fmma_stats`, `fmma_socfpga`, plus `fmma_log`, `fmma_time`,
+  `fmma_fixed`, `fmma_json`, `fmma_tls`. `main.c` does nothing but
+  start and stop. mongoose moved to `Software/third_party/`.
+* **The FPGA top level was 340 lines; it is now 150.** The CPU moved to
+  `Code/cpu_core.v` and the reset logic to `Code/reset_ctrl.v`, so the
+  top level says only how things are wired to the board. Pure refactor:
+  the RTL testbenches produce identical timing (39 / 195 / 169 cycles).
+
+### Added
+
+* **`market_maker.asm`** — two-sided quoting with inventory skew, the
+  strategy the project is named for. Computes a bid and an ask around
+  the mid, leans both against the position by `CFG_SKEW` per lot,
+  publishes them in `QUOTE_BID`/`QUOTE_ASK`, and signals when a later
+  market move reaches its price. 174 words. Fourteen tests, including
+  one that shows the skew makes the reducing side trade sooner.
+  * Its first version had a real flaw: it checked the trade condition
+    against quotes computed from the *same* tick, which sit inside the
+    current spread by construction and can therefore never be reached.
+    Resting quotes have to be checked against the *next* tick.
+* **Order-status polling.** `fmma_exec` follows each order with
+  `GET /v2/orders/{id}` until it reaches a terminal state and only then
+  reports a fill, using the broker's `filled_avg_price`. Previously a
+  2xx response was treated as a fill, which conflates "accepted" with
+  "executed" and lets the fabric's position drift from reality.
+* **P&L and a loss limit** (`fmma_risk`): average-cost accounting in
+  both directions, marking to market, and `--max-loss`, which halts
+  the host *and* writes `CFG_ENABLE = 0` so the fabric stops too.
+* **A stale-feed watchdog** (`--stale-feed`), because a feed that dies
+  silently leaves a healthy-looking heartbeat and no data.
+* **`fmma-probe`** — a standalone diagnostic that depends on nothing
+  but libc, so it works before the application does. `ramtest` proves
+  the mapped window really is our dual-port RAM rather than the stock
+  design's PIO registers.
+* **63 host unit tests** (`Software/tests/test_units.c`) covering the
+  fixed-point parser, the JSON extractor, the C strategy and the P&L
+  accounting, with no board, no network and no root.
+* **`tools/boardctl.py`** — a scriptable serial console for the board,
+  and **`tools/deploy.py`** — one command per bring-up step: network,
+  FPGA programming, file transfer, build, probe, run.
+
+### Fixed
+
+* **`-std=gnu11` does not work on the board.** The DE1-SoC images in
+  circulation carry gcc 4.6.3, which has no C11 mode at all. The build
+  now uses `-std=gnu99`, which is the intersection that works on both
+  that toolchain and a current one.
+* Generated files were written with CRLF on Windows and LF on Linux, so
+  `make check-generated` failed the moment it ran on the board. The
+  assembler now writes LF explicitly, and there is a `.gitattributes`.
+* `STRATIXV_CONFIGURATION_SCHEME "PASSIVE PARALLEL X16"` added to the
+  QSF. A Cyclone V SoC is configured by the HPS, and the project had no
+  configuration-scheme assignment at all.
+
+### Learned the hard way
+
+**A single read of an unconfigured HPS-to-FPGA bridge hangs the board.**
+Cyclone V has no bus timeout: the AXI transaction never completes, the
+core that issued it blocks forever, and there is no software recovery -
+only a power cycle. This happened during bring-up, from one
+`fmma-probe ramtest` after a configuration that had silently failed.
+
+Everything that touches the bridge now calls `fmma_fabric_check()`
+first, which refuses unless the FPGA manager reports `user mode`;
+`tools/deploy.py` additionally checks `dmesg` for a configuration
+timeout and restores the stock bitstream if anything looks wrong.
+`docs/11` opens with the warning and `docs/15` has the recovery.
+
+---
+
+## 2026-09 (a) — protocol v2, risk layer, verification
 
 The first revision under ECE 4900. The previous state was an inherited
 ECE 3710 CPU with a working HPS↔FPGA link and a first attempt at a trading

@@ -33,11 +33,11 @@ this: the project optimises and measures the part it can control, and says so.
 | ID | Requirement | Verified by |
 |----|-------------|-------------|
 | FR-1 | The system shall receive live best-bid/best-ask quotes for a configurable product from a public market data feed. | [13](13-test-report.md) §HPS, manual on-board run |
-| FR-2 | Quotes shall be delivered to the FPGA as fixed-point integers with no loss of the exchange's quoted precision. | `test_toolchain`, `MarketStream.c` `parse_scaled` |
+| FR-2 | Quotes shall be delivered to the FPGA as fixed-point integers with no loss of the exchange's quoted precision. | `test_toolchain`, the host application `parse_scaled` |
 | FR-3 | The trading decision shall be computed in FPGA fabric, not on the host CPU. | `tb_fmma` steps 3–6 |
 | FR-4 | The decision engine shall emit a buy signal, a sell signal, or nothing, for each quote it consumes. | `test_strategy.TestDecisions` |
 | FR-5 | Each signal shall identify the quote that produced it, so latency can be attributed. | `tb_fmma` step 5, `test_strategy.test_signal_carries_the_tick_that_caused_it` |
-| FR-6 | The host shall execute signals as orders against a paper-trading broker. | `MarketStream.c` `send_order`, on-board run |
+| FR-6 | The host shall execute signals as orders against a paper-trading broker. | the host application `send_order`, on-board run |
 | FR-7 | The host shall report fills back to the FPGA so that its inventory matches the broker's. | `tb_fmma` step 8, `test_strategy.TestFillAccounting` |
 | FR-8 | The decision engine shall refuse to increase a position beyond a configurable limit. | `tb_fmma` step 9, `test_strategy.TestRiskLimits` |
 | FR-9 | The system shall provide a single switch that suppresses all trading while leaving the engine running and observable. | `tb_fmma` step 11 |
@@ -45,8 +45,8 @@ this: the project optimises and measures the part it can control, and says so.
 | FR-11 | The host shall be able to load a new decision program and restart the engine without reconfiguring the FPGA. | `tb_fmma` step 13, `test_strategy.TestSoftwareRestart` |
 | FR-12 | The engine shall be resettable from the board. | `tb_fmma` step 14 |
 | FR-13 | The engine shall publish a liveness indicator the host can check. | `tb_fmma` step 2, `HEARTBEAT` |
-| FR-14 | The system shall measure and report the latency from quote publication to decision. | `tb_latency`, `MarketStream.c` statistics block |
-| FR-15 | The system shall be able to run the same strategy in host software, for comparison. | `MarketStream.c --no-fpga --bench` |
+| FR-14 | The system shall measure and report the latency from quote publication to decision. | `tb_latency`, the host application statistics block |
+| FR-15 | The system shall be able to run the same strategy in host software, for comparison. | `the host application --no-fpga --bench` |
 
 ## 1.4 Non-functional requirements
 

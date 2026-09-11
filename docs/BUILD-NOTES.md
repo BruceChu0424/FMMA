@@ -209,5 +209,5 @@ docker run --rm -v "$PWD:/work" -w /work/Software debian:bookworm-slim sh -c \
   'apt-get update -qq && apt-get install -y -qq build-essential libssl-dev python3 && make'
 ```
 
-That is how `MarketStream.c` is verified to compile clean under
+That is how the host application is verified to compile clean under
 `-Wall -Wextra` without a board present.

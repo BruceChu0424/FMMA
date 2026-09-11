@@ -6,7 +6,7 @@ Three things get built, and they are independent:
 |------|-------|----------|-------------|
 | The CPU program (`trading.asm` → `fpga_program.*`) | development PC | < 1 s | you changed the strategy or the memory map |
 | The FPGA bitstream (`HFTTop.sof`) | development PC | ~1 h | you changed anything in `Code/`, `HFTtop.v`, the Qsys system, the QSF or the SDC |
-| The host program (`marketstream`) | the board, or cross-compiled | ~30 s | you changed `MarketStream.c` or the memory map |
+| The host program (`marketstream`) | the board, or cross-compiled | ~30 s | you changed the host application or the memory map |
 
 Most work touches only the first and the third. Rebuilding the bitstream is
 rare, which is the point of putting the strategy in a loadable program.
@@ -29,7 +29,10 @@ sudo apt-get update
 sudo apt-get install build-essential libssl-dev python3
 ```
 
-`libssl-dev` is not optional; see §10.3.
+`libssl-dev` is not optional; see §10.3. Be aware that the older
+DE1-SoC images are Ubuntu 12.04-era and their archives are long gone,
+so `apt-get` may not be able to fetch it. In that case build the
+binary elsewhere - §10.4a.
 
 ## 10.2 Building the CPU program
 
@@ -46,7 +49,7 @@ rules). Outputs, all in `Software/`:
 
 | File | Used by |
 |------|---------|
-| `fpga_program.h` | `MarketStream.c` — the image the loader writes |
+| `fpga_program.h` | the host application — the image the loader writes |
 | `fpga_program.hex` | the Verilog testbenches, via `$readmemh` |
 | `fpga_program.mif` | Quartus, if you ever want the program baked into the bitstream |
 | `fpga_program.bin` | archive |
@@ -73,10 +76,15 @@ sudo ./marketstream --help
 Two compiler settings are not negotiable, and both cost real time to
 discover:
 
-**`-std=gnu11`, not `-std=c11`.** Strict ISO mode defines `__STRICT_ANSI__`,
-which hides `clock_gettime`, `CLOCK_MONOTONIC`, `usleep`, `mmap` and
-`MAP_FAILED` behind glibc's feature-test macros. The build fails with a wall
-of implicit-declaration errors that look like a missing header.
+**`-std=gnu99`, not `-std=c11` and not `-std=gnu11`.** Two separate
+traps meet here. The DE1-SoC Linux images in circulation carry **gcc
+4.6.3**, which has no C11 mode at all and rejects `-std=gnu11`
+outright. And a *strict* ISO mode (`-std=c99`, `-std=c11`) defines
+`__STRICT_ANSI__`, which hides `clock_gettime`, `CLOCK_MONOTONIC`,
+`usleep`, `mmap` and `MAP_FAILED` behind glibc's feature-test macros,
+producing a wall of implicit-declaration errors that look like a
+missing header. `gnu99` is the intersection that works on both the
+2012-era image and a current toolchain.
 
 **`-DMG_TLS=MG_TLS_OPENSSL`, not the built-in stack.** With no `-DMG_TLS` at
 all, mongoose compiles with TLS *disabled* and every `wss://` and `https://`
@@ -95,14 +103,8 @@ intermediate. `.skip_verification` does not help, because the chain-signature
 loop is not gated on it. OpenSSL connects to both endpoints. This was
 confirmed by building each configuration and probing the live endpoints.
 
-Cross-compiling from a PC works too:
-
-```bash
-make CC=arm-linux-gnueabihf-gcc
-```
-
-but you need `libssl-dev:armhf` for the target, which is usually more trouble
-than building on the board.
+Cross-compiling from a PC works too, and on the older images it is the
+only option; see §10.4a.
 
 ## 10.4 Building the FPGA bitstream
 
@@ -131,12 +133,38 @@ D:/Software/quartus/bin64/quartus_pgm.exe -m jtag -o "p;output_files/HFTTop.sof"
 
 or use the Quartus Programmer GUI. See [11](11-board-bringup.md) §11.4.
 
+## 10.4a Cross-compiling a self-contained binary
+
+When the board cannot install `libssl-dev`, build somewhere that can
+and copy the result across:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work/Software   debian:bookworm-slim bash -c '
+    dpkg --add-architecture armhf && apt-get update -qq &&
+    apt-get install -y -qq crossbuild-essential-armhf libssl-dev:armhf &&
+    make CC=arm-linux-gnueabihf-gcc static'
+```
+
+`make static` links OpenSSL and glibc into the binary, so the board's
+distribution stops mattering. Static glibc normally breaks name
+resolution because `getaddrinfo` needs NSS plugins at run time; it does
+not here, because mongoose resolves DNS itself over UDP and never calls
+`getaddrinfo`.
+
+`tools/deploy.py push` then copies the binaries over.
+
 ## 10.5 Running the tests
 
 ```bash
 Testbenches/run_sim.sh          # everything: Python + RTL, ~25 s
 Testbenches/run_sim.sh --quick  # Python only, ~2 s
 Testbenches/run_sim.bat         # same, from a Windows prompt
+```
+
+and the C unit tests, which need no board:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work/Software debian:bookworm-slim   bash -c 'apt-get update -qq && apt-get install -y -qq build-essential            && make test'
 ```
 
 The script regenerates the memory map and the program first, so it also

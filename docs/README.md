@@ -33,6 +33,17 @@ If you are new to the project, read 02, then 07, then 08.
 | 17 | [Glossary](17-glossary.md) | Terms from both halves of this project |
 | 18 | [Security and compliance](18-security-and-compliance.md) | Credentials, paper trading only, the key incident |
 
+Tooling worth knowing about:
+
+| Tool | What it is for |
+|------|----------------|
+| [`../Testbenches/run_sim.sh`](../Testbenches/run_sim.sh) | the whole off-board regression suite, 25 seconds |
+| [`../tools/boardctl.py`](../tools/boardctl.py) | a scriptable serial console for the board |
+| [`../tools/deploy.py`](../tools/deploy.py) | one command per bring-up step: network, FPGA, push, build, probe, run |
+| `Software/src/fmma_probe.c` | `fmma-probe`, the on-board HPS/FPGA link diagnostic |
+| [`../Software/protocol.py`](../Software/protocol.py) | the memory map; generates the C, assembly and Verilog copies |
+| [`../Software/fmma_sim.py`](../Software/fmma_sim.py) | the golden-reference instruction set simulator |
+
 Also in the repository:
 
 * [`../CHANGELOG.md`](../CHANGELOG.md) — what changed and when

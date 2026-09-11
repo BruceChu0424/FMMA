@@ -2,12 +2,12 @@
 
 ## 12.1 Strategy
 
-Four layers, each proving something the others cannot, with an explicit
+Five layers, each proving something the others cannot, with an explicit
 hand-off between them.
 
 ```
   ┌──────────────────────────────────────────────────────────────────┐
-  │ 4. On-board validation                    docs/11, manual        │
+  │ 4. On-board validation                    docs/11, tools/deploy  │
   │    the real feed, the real broker, the real chip                 │
   ├──────────────────────────────────────────────────────────────────┤
   │ 3. RTL, full chain            Testbenches/tb_fmma.v, tb_latency.v│
@@ -20,6 +20,9 @@ hand-off between them.
   │ 1. Model                    Software/test_toolchain.py,          │
   │    the ISA, the assembler, the simulator, the strategy           │
   │                                          test_strategy.py        │
+  ├──────────────────────────────────────────────────────────────────┤
+  │ 0. Host unit tests                   Software/tests/test_units.c │
+  │    fixed point, JSON, the C strategy, P&L - no board needed      │
   └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -32,6 +35,7 @@ disagreement. That is what licenses layers 1 and 3 to use the model.
 
 | Layer | Proves | Cannot prove |
 |-------|--------|--------------|
+| 0. C units | The host's parsing, strategy and P&L are right, without a board, a network or root. | Anything about the fabric. |
 | 1. Model | The decision table is right in every scenario; the assembler cannot emit something the hardware misreads; the protocol logic is sound. Fast enough (2 s) to run on every edit. | That the hardware behaves like the model. |
 | 2. RTL unit | The ALU's results and all five flags match the model for every opcode, every edge value and every shift amount. | Anything about control flow or timing. |
 | 3. RTL full chain | The real top level, driven through the real bridge port, implements the protocol: boot, seqlock, signalling, risk, restart, reset, port discipline. Latency is inside budget. | That the synthesised netlist matches the RTL, or that the board's peripherals work. |
@@ -39,7 +43,22 @@ disagreement. That is what licenses layers 1 and 3 to use the model.
 
 ## 12.3 Test inventory
 
-### Layer 1 — Python (82 tests, ~2 s)
+### Layer 0 — C unit tests (63 checks, instant)
+
+`Software/tests/test_units.c` covers the pure functions in the host
+application, on the development machine:
+
+| Group | What it covers |
+|-------|----------------|
+| fixed point | exact decimal parsing, truncation not rounding, negative values, stopping at a non-numeric character, saturation, formatting round-trip, the price clamp |
+| JSON | field extraction, missing fields, numeric-vs-string fields, truncation rejected, and the two substring traps (`last_match` is not `match`, a subscription ack is not a `ticker`) |
+| strategy | the whole decision table, re-anchoring, one-sided books, both risk limits, reduce-at-the-limit, fills |
+| P&L | average-cost accounting both directions, averaging in, crossing through zero, marking to market, the loss limit halting and staying halted, the stale-feed watchdog blocking then recovering |
+
+This layer is what makes `--bench` meaningful: it proves the C strategy
+really is the same algorithm as the assembly one.
+
+### Layer 1 — Python (96 tests, ~2 s)
 
 `Software/test_toolchain.py` (48 tests)
 
@@ -52,7 +71,7 @@ disagreement. That is what licenses layers 1 and 3 to use the model.
 | `TestConditions` | all six conditions against a Python signed comparison, over a grid of boundary values |
 | `TestSimulator` | LDI-then-arithmetic, immediate operand order, load/store through a register, backward branches, register jumps, the halt state, self-start, 3-cycle timing, undefined-encoding stall |
 
-`Software/test_strategy.py` (34 tests)
+`Software/test_strategy.py` (48 tests, covering both strategies)
 
 | Group | What it covers |
 |-------|----------------|
@@ -63,6 +82,7 @@ disagreement. That is what licenses layers 1 and 3 to use the model.
 | `TestRiskLimits` | both limits block; both allow the reducing side; just inside the limit is allowed; the master switch suppresses everything; re-enabling resumes |
 | `TestFillAccounting` | buys and sells move the position; a fill is applied once; the position survives many quotes |
 | `TestTiming` | idle loop is exactly 39 cycles; a decision completes inside 250 cycles |
+| `TestMarketMaker` | the quoting strategy: quotes straddle the mid, the first tick only quotes, a later move lifts the ask or hits the bid, a wider spread trades less, inventory skew moves both quotes and makes the reducing side easier to reach, the risk limit and the master switch still apply |
 
 ### Layer 2 — `Testbenches/tb_alu.v`
 

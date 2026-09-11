@@ -28,7 +28,7 @@ Software/         everything that runs on the host, plus the build tooling
   Assembler.py      parser and label resolver
   fmma_sim.py       golden-reference instruction set simulator
   trading.asm       the strategy
-  MarketStream.c    the host program
+  the host application    the host program
   test_*.py         the Python test suites
 Testbenches/      Verilog testbenches, the stub, and run_sim.sh
   legacy/           archived ECE 3710 testbenches, kept for provenance
@@ -71,7 +71,7 @@ which is why iterating on strategy is seconds and iterating on hardware is
 an hour.
 
 Add a test for whatever behaviour you added. `test_strategy.py`'s `Board`
-class drives the CPU exactly the way `MarketStream.c` does, so a test there
+class drives the CPU exactly the way the host application does, so a test there
 is a genuine protocol-level test, not a unit test of an internal.
 
 ### To the ISA or the CPU
@@ -94,7 +94,7 @@ This is the expensive path, and it has an ordering:
 
 1. Edit `Software/protocol.py`.
 2. `make protocol && make program`.
-3. Update both sides: `trading.asm` and `MarketStream.c`.
+3. Update both sides: `trading.asm` and the host application.
 4. Update `Testbenches/tb_fmma.v` if the handshake changed.
 5. Bump `PROTOCOL_VERSION` if the change is not backwards compatible. The
    `FW_VERSION` gate then refuses a mismatched pair instead of misbehaving.

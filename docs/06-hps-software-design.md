@@ -1,202 +1,252 @@
 # 6. HPS software design
 
-[`../Software/MarketStream.c`](../Software/MarketStream.c) is the whole host
-side: one process, one thread, one event loop. It runs on the DE1-SoC's ARM
-Cortex-A9 under Linux.
+The host side runs on the DE1-SoC's ARM Cortex-A9 under Linux: one
+process, one thread, one event loop, about 2,000 lines across thirteen
+modules.
 
-## 6.1 Responsibilities
+## 6.1 What it is and is not responsible for
 
 | It does | It does not |
 |---------|-------------|
-| terminate TLS and speak WebSocket and HTTP | decide anything about trading |
-| parse quotes into fixed point | compute a mid, a band or a position limit |
+| terminate TLS, speak WebSocket and HTTP | decide anything about trading |
+| parse quotes into exact fixed point | compute a mid, a band or a position limit |
 | load the CPU program and start the engine | run the strategy (except in `--no-fpga` mode) |
 | publish quotes through the seqlock | write into the FPGA's output block |
-| execute the CPU's decisions as orders | invent decisions of its own |
-| report fills back so inventory agrees | |
-| measure and report latency | |
+| execute the fabric's decisions as orders | invent decisions of its own |
+| follow orders to a terminal state and report fills | |
+| track P&L and enforce a loss limit | |
+| measure latency and report it | |
 
-The one deliberate exception is `--no-fpga`, which runs a C transcription of
-the same strategy so the two can be compared. §6.8.
+The one deliberate exception is `--no-fpga`, which runs a C
+transcription of the same strategy so the two can be compared. §6.9.
 
-## 6.2 Structure
+## 6.2 Module map
+
+Each file does one thing, and the dependency arrows all point the same
+way: nothing below knows about anything above it.
+
+```
+  main.c              start, stop, exit codes
+    └── fmma_app      the event loop; the only file that knows the whole shape
+          ├── fmma_config    defaults, environment, command line
+          ├── fmma_feed      Coinbase WebSocket -> struct fmma_quote
+          ├── fmma_fpga      the host half of the shared-memory protocol
+          │     └── fmma_socfpga   "is the fabric configured?" - the safety gate
+          ├── fmma_exec      orders, order status, fills
+          ├── fmma_risk      inventory, P&L, loss limit, stale-feed watchdog
+          ├── fmma_strategy  the software reference strategy
+          └── fmma_stats     counters and the latency histogram
+   shared: fmma_log, fmma_time, fmma_fixed, fmma_json, fmma_tls
+```
+
+| File | Lines | Responsibility |
+|------|------:|----------------|
+| `src/main.c` | ~60 | argument parsing, signals, exit codes |
+| `src/fmma_app.c` | ~250 | wiring and the event loop |
+| `src/fmma_config.c` | ~180 | one struct of defaults, one argument table |
+| `src/fmma_feed.c` | ~200 | WebSocket client, subscription, reconnect |
+| `src/fmma_fpga.c` | ~280 | seqlock, loader, signal polling, fill reports |
+| `src/fmma_socfpga.c` | ~80 | the fabric-state check (§6.4) |
+| `src/fmma_exec.c` | ~330 | order submission and status polling |
+| `src/fmma_risk.c` | ~130 | average-cost P&L, limits |
+| `src/fmma_strategy.c` | ~70 | the strategy in C |
+| `src/fmma_stats.c` | ~130 | counters, latency histogram, reporting |
+| `src/fmma_fixed.c` | ~90 | decimal text <-> scaled integer |
+| `src/fmma_json.c` | ~55 | field extraction |
+| `src/fmma_tls.c` | ~60 | CA bundle, handshake |
+| `src/fmma_log.c` | ~60 | leveled, timestamped logging |
+| `src/fmma_probe.c` | ~250 | a standalone diagnostic (§6.10) |
+
+The split is not cosmetic. It is what lets `tests/test_units.c` exercise
+the parsing, the strategy and the P&L on a laptop with no board, no
+network and no root - which is where most of the bugs were found.
+
+## 6.3 The event loop
 
 ```
 main
- ├─ parse_args, getenv for credentials
- ├─ map_bridge            mmap /dev/mem at 0xFF200000
- ├─ load_fpga_program     image with the entry word last (docs/07 §7.4)
- ├─ start_cpu             CFG_RESTART, wait for FW_VERSION + heartbeat
- ├─ mg_mgr_init, connect_feed
- └─ loop until SIGINT
+ ├─ fmma_config_parse_args
+ ├─ fmma_app_create
+ │    ├─ fmma_fabric_check        refuse to touch the bridge unless safe
+ │    ├─ fmma_fpga_open           mmap /dev/mem at 0xFF200000
+ │    ├─ fmma_fpga_load           image with the entry word last, then restart
+ │    └─ mg_mgr_init, feed, exec
+ └─ fmma_app_run  (until SIGINT)
       ├─ mg_mgr_poll(poll_ms)
-      │    └─ coinbase_cb  → handle_ticker → publish_tick → poll_fpga
-      │    └─ alpaca_cb    → check status  → report_fill
-      ├─ poll_fpga         (again, so a quiet feed does not delay a decision)
-      ├─ reconnect if the feed dropped and the backoff has expired
-      └─ print_stats every --stats seconds
+      │    ├─ feed    -> on_quote  -> publish_tick, then drain
+      │    └─ exec    -> on_fill   -> risk + fabric
+      ├─ drain_fpga        act even when the feed is quiet
+      ├─ fmma_exec_poll    follow working orders
+      ├─ fmma_feed_poll    reconnect if needed
+      └─ report every --stats seconds
 ```
 
-## 6.3 Feed
+## 6.4 The safety gate
 
-Coinbase Exchange WebSocket, **`ticker` channel**, which carries `best_bid`
-and `best_ask` — genuine top-of-book quotes.
+`fmma_socfpga.c` exists because of one specific failure, and it is worth
+stating plainly because it cost this project a hung board.
 
-Version 1 subscribed to `matches`, which reports executed trades. Its `side`
-field is the *maker* side, so the two words the old code called `BUY_PRICE`
-and `SELL_PRICE` were the last taker-buy print and the last taker-sell print
-— not a bid and an ask, and not a snapshot of anything. The strategy's
-"crossed market" test compared them, which was not a meaningful comparison.
-Moving to `ticker` is what makes the strategy mean what it says.
+On Cyclone V there is **no timeout on the HPS-to-FPGA bridge**. If the
+fabric is unconfigured, a read of `0xFF200000` issues an AXI transaction
+that never completes. The core that issued it blocks forever; in
+practice the whole board stops responding and needs a power cycle. It
+is not a signal you can catch and there is no software recovery.
 
-Message dispatch matches on the `type` field rather than a substring:
-`strstr(json, "\"ticker\"")` would also fire on the subscription
-confirmation, and `strstr(json, "\"match\"")` used to fire on `last_match`.
-
-### Reconnection
-
-`mg_ws_connect` is not a one-shot at startup any more. `MG_EV_CLOSE` and
-`MG_EV_ERROR` schedule a reconnect with exponential backoff (500 ms doubling
-to a 30 s ceiling, reset on a successful subscribe). Without that, a single
-dropped connection left the previous version running forever with a heartbeat
-and no data.
-
-## 6.4 Parsing
-
-`parse_scaled` converts a decimal string to a scaled integer without a float:
+So nothing maps the bridge without first asking the FPGA manager
+whether the fabric is in user mode:
 
 ```c
-parse_scaled("97432.17", 100)  ->  9743217
+if (fmma_fabric_check(cfg->force) != 0) return NULL;
 ```
 
-Version 1 used `strtof` and multiplied by 10,000. A `float` has 24 bits of
-mantissa; a BTC price scaled by 10,000 needs 30, so the low six bits were
-noise and the four decimal places the protocol advertised were not actually
-delivered. Integer parsing is exact, cheaper, and cannot surprise anyone.
+The check is not a proof — the fabric can be in user mode running a
+design with nothing at that address — but it removes the common case,
+and `--force` makes the residual risk an explicit choice. For a first
+bring-up of a new bitstream, confirm on `HEX0` first;
+[11](11-board-bringup.md) §11.5 explains.
 
-Sizes are parsed the same way with a scale of 10,000, so fractional sizes
-survive. The old code cast the float size to `unsigned`, which truncated
-every realistic BTC size (0.0013 BTC) to zero.
+## 6.5 Market data
 
-Prices are clamped to `FMMA_PRICE_MAX` (2³⁰ − 1) and the clamp is logged.
-The CPU adds bid and ask, so each side has to stay below 2³⁰ for the sum to
-remain a positive signed 32-bit value; letting a bad quote through would
-invert every comparison in the strategy.
+Coinbase Exchange WebSocket, **`ticker` channel**, which carries
+`best_bid` and `best_ask` — real top-of-book quotes.
 
-## 6.5 Talking to the FPGA
+Version 1 subscribed to `matches`, which reports executed trades. Its
+`side` field is the *maker* side, so the two words the old code called
+`BUY_PRICE` and `SELL_PRICE` were the last taker-buy print and the last
+taker-sell print — not a bid and an ask, and not a snapshot of
+anything. The strategy's "crossed market" test compared them, which was
+not a meaningful comparison. Moving to `ticker` is what makes the
+strategy mean what it says.
+
+Message dispatch matches the `type` field exactly, because
+`strstr(json, "\"ticker\"")` also fires on the subscription
+acknowledgement and `strstr(json, "\"match\"")` used to fire on
+`last_match`.
+
+The client reconnects on its own with exponential backoff (500 ms
+doubling to 30 s, reset on a successful subscribe). Without that, one
+dropped connection left the previous version running forever with a
+healthy heartbeat and no data.
+
+## 6.6 Parsing
+
+`fmma_parse_scaled` converts decimal text to a scaled integer without
+ever touching a float:
+
+```c
+fmma_parse_scaled("97431.02", 100)  ->  9743102
+```
+
+Version 1 used `strtof` and multiplied by 10,000. A `float` carries 24
+bits of mantissa; a BTC price scaled by 10,000 needs 30, so the low six
+bits were noise and the four decimal places the protocol advertised were
+not the ones delivered. Integer parsing is exact, faster, and cannot
+surprise anyone.
+
+It stops at the first character that cannot belong to a number, so it is
+safe on a pointer into the middle of a JSON document, and it saturates
+rather than wrapping on an absurd integer part.
+
+Prices are then clamped to `FMMA_PRICE_MAX` (2³⁰ − 1) and the clamp is
+counted and logged. The fabric adds bid and ask, so each side must stay
+below 2³⁰ for the sum to remain a positive signed 32-bit value; letting
+a bad quote through would invert every comparison in the strategy.
+
+## 6.7 Talking to the fabric
 
 All of it is in [07-shared-memory-protocol](07-shared-memory-protocol.md);
-the functions that implement it are:
+`fmma_fpga.c` is the implementation:
 
 | Function | Protocol role |
 |----------|---------------|
-| `publish_tick` | seqlock writer: odd, data, even |
-| `report_fill` | publish-last fill report |
-| `push_config` | threshold, position limit, starting inventory |
-| `load_fpga_program` | image with the entry word last, then full readback verify |
-| `start_cpu` | `CFG_RESTART`, then wait for `FW_VERSION` and a moving heartbeat |
-| `poll_fpga` | edge-detect `SIGNAL_SEQ`, attribute latency, execute |
-| `fmma_barrier` | `__sync_synchronize()` around the ordering-critical stores |
+| `fmma_fpga_publish_tick` | seqlock writer: odd, data, even |
+| `fmma_fpga_report_fill` | publish-last fill report |
+| `fmma_fpga_load` | image with the entry word last, full readback verify, restart, version check |
+| `fmma_fpga_poll_signal` | edge-detect `SIGNAL_SEQ`; never writes the output block |
+| `fmma_fpga_read_state` | heartbeat, position, status, rejects |
+| `barrier()` | `__sync_synchronize()` around the order-critical stores |
 
-`load_fpga_program` refuses to run if the assembled program's base does not
-match the protocol's, or if the image would run past the program area. Both
-of those used to be silent overwrites of the data block.
+`fmma_fpga_load` refuses to run if the assembled program's base does not
+match the protocol's, or if the image would overrun the program area —
+both were silent overwrites of the data block before.
 
-`start_cpu` distinguishes three outcomes instead of one: running, version
-mismatch (the bitstream is older or newer than the program — see
-[04](04-isa-reference.md) §4.8), and no heartbeat at all. The third prints
-what to check, including pressing `KEY[0]`.
+`wait_for_cpu` distinguishes three outcomes rather than one: running, a
+version mismatch, and *alive but refusing to declare a version*. The
+third is the datapath probe failing, and it gets its own message telling
+you to rebuild the bitstream ([04](04-isa-reference.md) §4.8).
 
-## 6.6 Order execution
-
-```
-signal → cooldown check → dry-run check → credentials check
-       → POST /v2/orders → status check → report_fill
-```
-
-* **The HTTP status is checked.** A 2xx logs the round-trip time and reports
-  a fill; anything else logs the broker's body and counts a rejection.
-  Version 1 printed the response and moved on, so a rejected order was
-  indistinguishable from a filled one and the FPGA's inventory drifted away
-  from reality.
-* **Fills are reported on acceptance.** Alpaca paper market orders are
-  accepted and filled effectively immediately, so "accepted" is treated as
-  "filled, one lot". [09](09-risk-management.md) §9.6 says what a system
-  that had to handle partial fills would do instead.
-* **A cooldown** (`--cooldown`, default 1000 ms) rate-limits bursts. It is a
-  protection against the broker's rate limits, not a risk control; the risk
-  control is in the fabric.
-* Per-order context is heap-allocated and freed in `MG_EV_CLOSE`, so a
-  connection that errors out does not leak.
-
-## 6.7 Latency measurement
-
-Every published tick's timestamp is stored in a 256-entry ring indexed by its
-sequence number. When a signal arrives, `SIGNAL_TICK` names the quote that
-caused it, so the host can subtract:
+## 6.8 Execution and fills
 
 ```
-latency = now  -  g_tick_time_us[SIGNAL_TICK % 256]
+signal -> risk check -> cooldown -> dry run -> credentials
+       -> POST /v2/orders -> follow to a terminal state -> report the fill
 ```
 
-That is "from the moment the quote became visible to the fabric, to the
-moment this program noticed the answer". It therefore includes the host's own
-polling interval, which is why `--poll-ms` defaults to 1 and why
-[14](14-latency-and-performance.md) reports the fabric-only figure from
-simulation separately. Min, mean and max are printed every `--stats`
-seconds.
+**Orders are followed, not assumed.** The previous version reported a
+fill as soon as the POST returned 2xx, which conflates "the broker
+accepted the order" with "the order executed". `fmma_exec.c` keeps up to
+eight working orders, polls `GET /v2/orders/{id}` every
+`--order-poll` ms, and only reports a fill when the status is `filled`
+— using the broker's `filled_avg_price` when it gives one. An order
+that does not reach a terminal state within 60 s is abandoned with a
+warning rather than polled forever.
 
-This is the mechanism that closes requirement FR-14 and work items 9 and 14
-of the original project plan.
+This matters because the fabric's position limit is only as good as the
+position, and the position is only right if a fill report means a fill.
 
-## 6.8 The software reference strategy
+## 6.9 The software reference strategy
 
-`--no-fpga` runs `software_decide`, a C transcription of `trading.asm`, and
-uses this CPU for the decision instead of the fabric. `--bench` runs it
-*alongside* the fabric and times it with `CLOCK_MONOTONIC`.
+`--no-fpga` runs `fmma_strategy.c`, a transcription of `trading.asm`,
+and lets this CPU decide. `--bench` runs it *alongside* the fabric on a
+throwaway copy of the state and times it with `CLOCK_MONOTONIC`.
 
-The comparison is deliberately narrow and the document says so: it times the
-arithmetic only, not the bus traffic, because bus traffic is not something an
-FPGA removes. See [14](14-latency-and-performance.md) §14.5 for the numbers
-and for why the honest headline is "deterministic", not "faster".
+The comparison is deliberately narrow: it times the arithmetic only, not
+the bus traffic, because bus traffic is not something an FPGA removes.
+[14](14-latency-and-performance.md) §14.5 has the numbers and the honest
+reading of them.
 
-`--no-fpga` also makes the whole program runnable on a laptop with no board
-and no root, which is how the feed and the Alpaca path were tested
-independently of the hardware.
+`--no-fpga` also makes the whole program runnable on a laptop, which is
+how the feed and the broker path were developed without a board.
 
-## 6.9 Operational behaviour
+## 6.10 The probe
+
+`fmma-probe` is a separate, tiny program that depends on nothing but
+libc. It builds in a second on the board and works before the main
+application does, which makes it the right first thing to run during
+bring-up and the right first thing to reach for when something is wrong.
+
+```
+fmma-probe             summarise the protocol block
+fmma-probe watch       follow the heartbeat, position and signals
+fmma-probe ramtest     prove the window really is our shared RAM
+fmma-probe dump [n]    hex dump
+fmma-probe read/write  poke individual words
+```
+
+`ramtest` is the useful one: it writes unique values and walking ones
+into the free region above the protocol block and reads them back. A
+PIO register block — which is what the stock DE1-SoC reference design
+puts at this address — fails it immediately, so it answers "is *our*
+design in the fabric?" without needing to see the board.
+
+## 6.11 Operational behaviour
 
 | Concern | Behaviour |
 |---------|-----------|
-| Credentials | `APCA_API_KEY_ID` / `APCA_API_SECRET_KEY` from the environment only. Never a literal, never a file in the tree. |
-| TLS trust | A real CA bundle is loaded from `/etc/ssl/certs/ca-certificates.crt` (or `--ca`). Without one the program warns loudly. Version 1 passed an empty CA, which checks the host name and nothing else. |
-| Shutdown | `SIGINT`/`SIGTERM` set a flag; the loop exits, disables trading on the FPGA, prints final statistics, unmaps and closes. Version 1 had an unreachable cleanup path. |
-| Failure to load | Non-zero exit with a specific code (3 mmap, 4 loader, 5 CPU) rather than carrying on against unverified memory. |
-| Logging | Line buffered, so a redirected log is complete if the process is killed. |
+| Credentials | `APCA_API_KEY_ID` / `APCA_API_SECRET_KEY` from the environment only. Never a literal, never logged, never in a config dump. |
+| TLS trust | A real CA bundle from the system, or `--ca`. Warns loudly if none is found. Version 1 passed an empty CA, which verifies nothing. |
+| Shutdown | `SIGINT`/`SIGTERM` set a flag; the loop exits, disables trading in the fabric, prints final statistics, unmaps and closes. |
+| `SIGPIPE` | ignored, so a dropped socket cannot kill the process |
+| Failure to start | Distinct exit codes: 1 arguments, 2 fabric, 3 CPU |
+| Logging | Leveled and timestamped, line buffered, so a redirected log survives a kill |
 
-## 6.10 Command line
+## 6.12 Build
 
-```
---no-fpga           run the software reference strategy instead of the fabric
---dry-run           never send an order; log what would have been sent
---bench             also time the software strategy, for comparison
---product ID        Coinbase product id            (default BTC-USD)
---symbol SYM        Alpaca symbol                  (default BTCUSD)
---qty Q             order size                     (default 0.001)
---threshold CENTS   move that triggers a decision  (default 1000 = $10.00)
---max-pos N         inventory limit in lots        (default 5)
---position N        inventory the CPU starts from  (default 0)
---cooldown MS       minimum spacing between orders (default 1000)
---poll-ms MS        network/FPGA poll interval     (default 1)
---stats SEC         statistics interval, 0 = off   (default 30)
---ca FILE           CA bundle for TLS              (default: autodetect)
--v, --verbose       print every quote
-```
+Two settings are not negotiable and both cost real time to discover;
+they are documented in the Makefile and in [10](10-build-guide.md) §10.3:
+**`-std=gnu99`** (the DE1-SoC images in circulation carry gcc 4.6, which
+has no C11 mode at all) and **`-DMG_TLS=MG_TLS_OPENSSL`** (the built-in
+TLS stack cannot complete a handshake with Coinbase).
 
-## 6.11 Build
-
-The two settings that are not negotiable, both learned the hard way, are
-documented in the Makefile itself and in [10](10-build-guide.md) §10.3:
-`-std=gnu11` (not `c11`, which hides the POSIX declarations) and
-`-DMG_TLS=MG_TLS_OPENSSL` (not the built-in stack, which cannot complete a
-handshake with Coinbase).
+`make static` produces a self-contained binary for a board whose
+distribution is too old to install `libssl-dev`.
