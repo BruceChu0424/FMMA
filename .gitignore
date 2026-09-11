@@ -11,6 +11,12 @@ incremental_db/
 hps_isw_handoff/
 output_files/*
 !output_files/HFTTop.sof
+# The .rbf matters more than the .sof: it is what the HPS uses to
+# configure the fabric from Linux, which is the documented route and
+# needs no USB-Blaster. Without it committed, a fresh clone cannot get
+# past "deploy.py fpga" without installing Quartus - and the whole
+# point of the container tooling is that you do not have to.
+!output_files/HFTTop.rbf
 !output_files/*.summary
 !output_files/*.rpt
 !output_files/*.pin
