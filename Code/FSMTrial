@@ -19,7 +19,9 @@ output reg Ren;
 output reg [1:0] displaceControl;
 output reg RI, PCen, Fen, IRen, LS, we;
 output reg [3:0] opcode, rSrc, rDst;
-output reg [32:0] Imm;
+output reg [31:0] Imm;   // 33 bits before; the top level
+                         // only ever wired 32, so the extra bit was
+                         // a silent truncation warning and nothing else
 
 // Registers
 reg [3:0] state;
@@ -122,13 +124,22 @@ always@(negedge clk) begin
 					else if(memin[11:8] == 4'b0111) begin
 						if(flags[4] == 1'b1 || flags[0] == 1'b0) displaceControl <= 2'b11;
 					end
-					else if(memin[11:8] == 4'b1100) begin
-						if(flags[4] == 1'b0 || flags[0] == 1'b0) displaceControl <= 2'b11;
-					end
+					// Condition 1100 is deliberately not decoded: its
+					// expression (!Z | !N) is true after every CMP, so it
+					// would be an unconditional branch wearing a
+					// conditional name. Use 0110 (LT) instead; the
+					// assembler refuses to emit 1100.
 					else if(memin[11:8] == 4'b1110) begin
 						displaceControl <= 2'b11;
 					end
 					state <= S6;
+				end
+				// instr[7:4] is none of load/store/jump, so this is not a
+				// valid encoding. Park in the halt state rather than leaving
+				// 'state' unassigned, which stalled the FSM in decode with no
+				// way out and no indication of why.
+				else begin
+					state <= hlt;
 				end
 			end
 			// If branch type
@@ -150,9 +161,11 @@ always@(negedge clk) begin
 				else if(memin[11:8] == 4'b0111) begin
 					if(flags[4] == 1'b1 || flags[0] == 1'b0) displaceControl <= 2'b10;
 				end
-				else if(memin[11:8] == 4'b1100) begin
-					if(flags[4] == 1'b0 || flags[0] == 1'b0) displaceControl <= 2'b10;
-				end
+				// Condition 1100 is deliberately not decoded: its
+				// expression (!Z | !N) is true after every CMP, so it
+				// would be an unconditional branch wearing a
+				// conditional name. Use 0110 (LT) instead; the
+				// assembler refuses to emit 1100.
 				else if(memin[11:8] == 4'b1110) begin
 					displaceControl <= 2'b10;
 				end
@@ -190,7 +203,6 @@ always@(negedge clk) begin
 
 	// R and I type
 	S2: begin
-		$display("In R type");
 		PCen <= 0;
 		Ren <= 0;
 		Fen <= 0;
@@ -201,7 +213,6 @@ always@(negedge clk) begin
 	
 	// Store type
 	S3: begin
-		$display("In Store type");
 		PCen <= 0;
 		Ren <= 0;
 		Fen <= 0;
@@ -214,7 +225,6 @@ always@(negedge clk) begin
 	
 	// Load Type Set Memory Address
 	S4: begin
-		$display("In Load type");
 		PCen <= 0;
 		Ren <= 0;
 		Fen <= 0;
@@ -227,7 +237,6 @@ always@(negedge clk) begin
 	
 	// Branch Type
 	S5: begin
-		$display("In Branch type");
 		PCen <= 0;
 		Ren <= 0;
 		Fen <= 0;
@@ -240,7 +249,6 @@ always@(negedge clk) begin
 	
 	// Jump Type
 	S6: begin
-		$display("In Jump type");
 		PCen <= 0;
 		Ren <= 0;
 		Fen <= 0;

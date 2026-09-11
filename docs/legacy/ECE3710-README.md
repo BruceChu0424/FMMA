@@ -1,3 +1,16 @@
+> **Archived — ECE 3710, autumn 2025.** This is the README from the archive
+> the CPU came from. It is kept for provenance and because its account of
+> the HPS/Linux bring-up is still the best narrative of how that was first
+> done. It is **not** a description of the current system.
+>
+> Two things in it are wrong for this design: the HPS-to-FPGA bridge base is
+> `0xFF200000` (the **lightweight** bridge), not `0xC8000000`; and the
+> closing statement that the FPGA could not read what the HPS wrote is no
+> longer true. See [`../07-shared-memory-protocol.md`](../07-shared-memory-protocol.md)
+> and [`../11-board-bringup.md`](../11-board-bringup.md).
+
+---
+
 This is the project done by group 1011 in ECE 3710. The group members for this project are Kaleb, Carson, Bobby, and Henry. This project is a High-Frequency Stock Trader. 
 Our archive contains four folders. This current folder with the readme and the final report.
 We have a code folder containing all the code we wrote for our CPU, along with our final algorithm in machine code. I also added a few of our FSMs from

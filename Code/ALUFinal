@@ -5,11 +5,20 @@
 // 
 // ALU Design
 //
-// Included Operations: 
-// ADDU, ADD, ADDC, ADDCU,
-// SUB, CMP, AND, OR
-// XOR, NOT, NOP 
-// RSH, LSH, ARSH, ALSH
+// Implemented operations (opcode -> mnemonic):
+//   1 AND    2 OR     3 XOR    5 ADD    6 ADDU
+//   7 ADDC   8 LSH    9 SUB    A SUBC   B CMP
+//   D ASH    E MUL    F MOV
+// Anything else falls through to the default arm, which returns 0
+// with the flags cleared.
+//
+// Flag semantics are meaningful for ADD/ADDU/ADDC/SUB/SUBC/CMP only.
+// The logical operations, MOV and MUL leave Flags at 0, and because
+// the control FSM asserts Fen for the whole R/I-type class that
+// *clears* the flag register - so a compare result does not survive
+// an intervening MOV.  Put a CMP immediately before its branch.
+//
+// See docs/04-isa-reference.md for the full table.
 ////////////////////////////////////////////////
 module ALUFinal( A, B, C, Opcode, Cin, Flags);
 
@@ -121,11 +130,17 @@ begin
 			C = A - B;
 			if (C == 32'd0) Flags[4] = 1'b1;
 			else Flags[4] = 1'b0;
-            if(A < B) Flags[3] = 1'b0;
+            if(A < B) Flags[3] = 1'b0;          // borrow-inverted carry
             else Flags[3] = 1'b1;
 			if( (A[31] ^ B[31]) & (A[31] ^ C[31]) ) Flags[2] = 1'b1;
 			else Flags[2] = 1'b0;
-			
+			// SUB previously left L and N at zero, so a SUB followed by
+			// a conditional branch could never take it.  Use CMP before
+			// a branch if the operands can overflow: N here is the sign
+			// of the difference, which differs from "A < B" exactly when
+			// the subtraction overflows.
+			Flags[1] = (A < B);                 // L, unsigned
+			Flags[0] = C[31];                   // N, sign of the result
 		end
 		
         SUBC: begin 
@@ -136,13 +151,16 @@ begin
             C = A - BCin;
 			if (C == 32'd0) Flags[4] = 1'b1;
 			else Flags[4] = 1'b0;
-            if(A < B) Flags[3] = 1'b1;
-            else Flags[3] = 1'b0;
-           
+            // Same borrow-inverted polarity as SUB; this used to be
+            // the other way round, so SUB and SUBC disagreed about
+            // what the carry flag meant.
+            if(A < BCin) Flags[3] = 1'b0;
+            else Flags[3] = 1'b1;
+
             if( (A[31] ^ BCin[31]) & (A[31] ^ C[31]) ) Flags[2] = 1'b1;
 			else Flags[2] = 1'b0;
-			
-			
+			Flags[1] = (A < BCin);              // L, unsigned
+			Flags[0] = C[31];                   // N, sign of the result
         end
 
 		// Flags[4] = Z, Zero Flag
@@ -150,20 +168,20 @@ begin
 		// Flags[2] = F, Overflow Flag 
 		// Flags[1] = L, Low Flag (Less than unsigned)
 		// Flags[0] = N, Negative Flag
+		// CMP produces no result, only flags.  N is the signed
+		// less-than every conditional branch is built on; L is the
+		// unsigned one.  The previous version derived both from a
+		// sign-compare chain that got L wrong whenever the operands
+		// had different signs (a positive A against a negative B is
+		// unsigned-less-than, but the chain reported 0).
 		CMP: begin
 			BCin = 32'd0;
 			shift = 5'd0;
-
-			if( A[31] == B[31] ) begin
-				if (A < B) Flags[1:0] = 2'b11;
-				else Flags[1:0] = 2'b00;
-			end
-			else if (A[31] == 1'b0) Flags[1:0] = 2'b00;
-			else Flags[1:0] = 2'b01;
-			
-			Flags[4:2] = 3'b000;
-			
-			if(A == B) Flags[4] = 1;	
+			i = 0;
+			Flags = 5'b00000;
+			if (A == B) Flags[4] = 1'b1;                       // Z
+			Flags[1] = (A < B);                                // L, unsigned
+			Flags[0] = ($signed(A) < $signed(B));              // N, signed
 		end
 		
 		AND: begin
@@ -191,38 +209,31 @@ begin
 		
 		
 		
+		// The shift amount is a SIGNED 5-bit value in B[4:0]:
+		// positive shifts left, negative shifts right.  B[4] is its
+		// sign, so the magnitude of a right shift is the two's
+		// complement of the low five bits.
+		//
+		// The previous implementation always performed the left shift
+		// and then, whenever the negated count happened to land at 15
+		// or below, performed a second right shift on the already
+		// shifted value.  The result was correct only for counts 1..16;
+		// a count of 0 returned A >> 1 and every negative count
+		// returned (A << n) >> k instead of A >> (32 - n).
 		LSH: begin
 			BCin = 32'd0;
-			
-			C= A;
-			if((B[4:0]) >= 0) begin
-				for(i = 0; i< (B[4:0]); i=i+1)
-				C = C << 1;
-			end
-			shift = ~B[4:0]  +5'b00001;
-			if(shift > 15) shift = 15;
-			else begin
-				for(i = 0; i< ((B[4:0] ) +5'b00001); i=i+1) 
-				C = C >> 1;
-			end
+			i = 0;
+			shift = B[4] ? (~B[4:0] + 5'b00001) : B[4:0];
+			if (B[4] == 1'b0) C = A << B[4:0];      // left
+			else              C = A >> shift;       // logical right
 		end
-		
+
 		ASH: begin
 			BCin = 32'd0;
-			C = A;
-			if((B[4:0]) >= 0) begin
-				for(i = 0; i< (B[4:0]); i = i+1) 
-				C = C <<< 1;
-			end
-			shift = ~B[4:0]  +5'b00001;
-			if(shift >15) shift = 15;
-		
-
-			else begin
-
-				for(i = 0; i< shift; i = i+1) 
-				C = C >>> 1;
-			end
+			i = 0;
+			shift = B[4] ? (~B[4:0] + 5'b00001) : B[4:0];
+			if (B[4] == 1'b0) C = A <<< B[4:0];     // left
+			else              C = $signed(A) >>> shift;   // arithmetic right
 		end
 	
 		

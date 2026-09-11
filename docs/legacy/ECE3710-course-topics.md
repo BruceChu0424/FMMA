@@ -1,3 +1,12 @@
+> **Archived — planning notes, January 2026.** The team's mapping of
+> ECE 3710 and CS 3810 lecture topics onto the parts of this project they
+> support. Kept as a record of how the project was scoped against the
+> coursework; the dates refer to the course calendar, not to this project's
+> schedule. See [`../16-project-plan.md`](../16-project-plan.md) for the
+> actual plan.
+
+---
+
 TOPICS:
 
 Jan 10: Intro to the course. Logic Functions, Truth Tables, Boolean Algebra

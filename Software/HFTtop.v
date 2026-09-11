@@ -28,6 +28,14 @@
 module HFTTop(
     input                    CLOCK_50,
 
+    //////////// KEY //////////
+    // KEY[0] is the CPU reset button. The DE1-SoC push buttons are
+    // active low (pressed = 0). Holding it restarts the CPU from the
+    // top of its program without reconfiguring the FPGA, which is
+    // what makes a demo repeatable; the HPS has its own software
+    // path for the same thing (CFG_RESTART, see docs/07).
+    input            [0:0]   KEY,
+
     //////////// SEG7 //////////
     output           [6:0]   HEX0,
 
@@ -59,11 +67,22 @@ module HFTTop(
 // --------------------------------------------
 reg [4:0] por_cnt = 5'd0;
 always @(posedge CLOCK_50) begin
-    if (!por_cnt[4])
+    if (!KEY[0])
+        por_cnt <= 5'd0;             // button held: stay in reset
+    else if (!por_cnt[4])
         por_cnt <= por_cnt + 5'd1;
 end
-wire cpu_rst = ~por_cnt[4];          // active high
-wire fsm_rst = por_cnt[4];           // active low (release)
+
+// Two synchronising stages on the button so a press, which is
+// asynchronous to CLOCK_50 and bounces, cannot put the reset
+// distribution into a metastable state.
+reg [1:0] key_sync = 2'b11;
+always @(posedge CLOCK_50)
+    key_sync <= {key_sync[0], KEY[0]};
+
+wire reset_active = ~por_cnt[4] | ~key_sync[1];
+wire cpu_rst = reset_active;         // active high
+wire fsm_rst = ~reset_active;        // active low (release)
 
 // --------------------------------------------
 // CPU <-> shared RAM bus (Avalon MM slave that
@@ -184,8 +203,25 @@ MUX16to1 addrMUX(
     .out(rAddr)
 );
 
+// Operand routing for the ALU.
+//
+// The ALU computes "A op B" and the result is written back to Rd, so
+// the ISA's "OP Rd, X" must put R[rd] on A and X on B.  This mux used
+// to sit on the A input and select between R[rd] and the immediate,
+// which made the R-type form A = R[rd], B = R[rs] (right) but the
+// I-type form A = imm, B = R[rd] (backwards).  The consequence was
+// that every non-commutative immediate instruction did the wrong
+// thing without any diagnostic: SUB Rd,#k computed k - Rd, CMP Rd,#k
+// compared k against Rd, and MOV Rd,#k was a no-op because MOV
+// returns its B input.
+//
+// Moving the mux to the B input fixes all of them and leaves the
+// R-type encoding bit-for-bit identical.  trading.asm's init block
+// verifies the wiring at run time before it declares the protocol
+// version, so an old bitstream paired with a new program fails
+// loudly instead of trading on bad arithmetic.
 MUX2to1 immMUX(
-    .in0(rDest),
+    .in0(rSrc2),
     .in1(Imm),
     .control(ImmSelect),
     .out(DestImm)
@@ -209,13 +245,17 @@ RegBank regBank(
     .rst(cpu_rst)
 );
 
+// The carry input comes from the flag register, which is what makes
+// ADDC/SUBC able to chain across instructions. It used to be tied to
+// zero, which made ADDC identical to ADD and made SUBC subtract an
+// extra one on every use.
 ALUFinal ALU(
-    .A(DestImm),
-    .B(rSrc2),
+    .A(rDest),        // always R[rd]
+    .B(DestImm),      // R[rs] for R-type, the immediate for I-type
     .Opcode(op),
     .C(ALUout),
     .Flags(flags),
-    .Cin(1'b0)
+    .Cin(flagsR[3])
 );
 
 // The FSM holds an active-low reset (legacy lab

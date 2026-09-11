@@ -43,7 +43,13 @@ module HPSfgpa2_onchip_memory2_0 (
                                  )
 ;
 
-  parameter INIT_FILE = "C:/intelFPGA_lite/ECE 3710/ECE3710_Project/Mif4.mif";
+  // The shared RAM must power up zeroed: a zero word is the CPU's HALT
+  // instruction, which is what parks it until the HPS loader writes a
+  // program. This used to point at a Mif4.mif on the original ECE 3710
+  // machine; Quartus could not find it, warned (Critical Warning 127003)
+  // and zeroed the RAM - so the boot contract held only by accident.
+  // "UNUSED" asks for a zeroed block explicitly.
+  parameter INIT_FILE = "UNUSED";
 
 
   output  [ 31: 0] readdata;
@@ -109,7 +115,12 @@ wire             wren2;
            the_altsyncram.outdata_reg_a = "UNREGISTERED",
            the_altsyncram.outdata_reg_b = "UNREGISTERED",
            the_altsyncram.ram_block_type = "AUTO",
-           the_altsyncram.read_during_write_mode_mixed_ports = "DONT_CARE",
+                      // OLD_DATA, not DONT_CARE: when the HPS writes a word in the
+           // same cycle the CPU reads it, DONT_CARE lets the read return
+           // indeterminate data (the vendor model drives X). OLD_DATA
+           // returns the previous contents, which is the defined
+           // behaviour the seqlock in docs/07 is built on.
+           the_altsyncram.read_during_write_mode_mixed_ports = "OLD_DATA",
            the_altsyncram.width_a = 32,
            the_altsyncram.width_b = 32,
            the_altsyncram.width_byteena_a = 4,

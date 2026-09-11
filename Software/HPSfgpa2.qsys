@@ -635,18 +635,18 @@
   <parameter name="ecc_enabled" value="false" />
   <parameter name="enPRInitMode" value="false" />
   <parameter name="enableDiffWidth" value="false" />
-  <parameter name="initMemContent" value="true" />
-  <parameter name="initializationFileName">C:/intelFPGA_lite/ECE 3710/ECE3710_Project/Mif4.mif</parameter>
+  <parameter name="initMemContent" value="false" />
+  <parameter name="initializationFileName">UNUSED</parameter>
   <parameter name="instanceID" value="NONE" />
   <parameter name="memorySize" value="4096" />
-  <parameter name="readDuringWriteMode" value="DONT_CARE" />
+  <parameter name="readDuringWriteMode" value="OLD_DATA" />
   <parameter name="resetrequest_enabled" value="true" />
   <parameter name="simAllowMRAMContentsFile" value="false" />
   <parameter name="simMemInitOnlyFilename" value="0" />
   <parameter name="singleClockOperation" value="true" />
   <parameter name="slave1Latency" value="1" />
   <parameter name="slave2Latency" value="1" />
-  <parameter name="useNonDefaultInitFile" value="true" />
+  <parameter name="useNonDefaultInitFile" value="false" />
   <parameter name="useShallowMemBlocks" value="false" />
   <parameter name="writable" value="true" />
  </module>

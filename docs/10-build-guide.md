@@ -1,0 +1,198 @@
+# 10. Build guide
+
+Three things get built, and they are independent:
+
+| What | Where | How long | Needed when |
+|------|-------|----------|-------------|
+| The CPU program (`trading.asm` → `fpga_program.*`) | development PC | < 1 s | you changed the strategy or the memory map |
+| The FPGA bitstream (`HFTTop.sof`) | development PC | ~1 h | you changed anything in `Code/`, `HFTtop.v`, the Qsys system, the QSF or the SDC |
+| The host program (`marketstream`) | the board, or cross-compiled | ~30 s | you changed `MarketStream.c` or the memory map |
+
+Most work touches only the first and the third. Rebuilding the bitstream is
+rare, which is the point of putting the strategy in a loadable program.
+
+## 10.1 Prerequisites
+
+**Development PC (Windows in this project's case):**
+
+| Tool | Version used | Purpose |
+|------|--------------|---------|
+| Quartus Prime Lite | 25.1std.0 at `D:\Software\quartus` | synthesis, fit, timing, programming |
+| Python | 3.14 | assembler, memory map, simulator, tests |
+| Icarus Verilog | 12.0 at `C:\iverilog` | simulation (`winget install Icarus.Verilog`) |
+| Git Bash | any | running the shell scripts |
+
+**On the board:**
+
+```bash
+sudo apt-get update
+sudo apt-get install build-essential libssl-dev python3
+```
+
+`libssl-dev` is not optional; see §10.3.
+
+## 10.2 Building the CPU program
+
+```bash
+cd Software
+python protocol.py --emit-c   -o fmma_protocol.h
+python protocol.py --emit-asm -o fmma_protocol.inc
+python protocol.py --emit-vh  -o ../Testbenches/fmma_protocol.vh
+python Assembler.py trading.asm
+```
+
+or just `make program` (which runs the same thing through the dependency
+rules). Outputs, all in `Software/`:
+
+| File | Used by |
+|------|---------|
+| `fpga_program.h` | `MarketStream.c` — the image the loader writes |
+| `fpga_program.hex` | the Verilog testbenches, via `$readmemh` |
+| `fpga_program.mif` | Quartus, if you ever want the program baked into the bitstream |
+| `fpga_program.bin` | archive |
+| `fpga_program.lst` | annotated listing: address, encoding, disassembly, source |
+
+The assembler prints the symbol table and the listing, and fails rather than
+emitting anything the hardware would misinterpret — see
+[04](04-isa-reference.md) §4.7 for the list.
+
+**The memory map is generated, not written.** If you change
+`Software/protocol.py`, re-run all four commands above; `make check-generated`
+fails the build if any generated file is stale.
+
+## 10.3 Building the host program
+
+On the board:
+
+```bash
+cd Software
+make
+sudo ./marketstream --help
+```
+
+Two compiler settings are not negotiable, and both cost real time to
+discover:
+
+**`-std=gnu11`, not `-std=c11`.** Strict ISO mode defines `__STRICT_ANSI__`,
+which hides `clock_gettime`, `CLOCK_MONOTONIC`, `usleep`, `mmap` and
+`MAP_FAILED` behind glibc's feature-test macros. The build fails with a wall
+of implicit-declaration errors that look like a missing header.
+
+**`-DMG_TLS=MG_TLS_OPENSSL`, not the built-in stack.** With no `-DMG_TLS` at
+all, mongoose compiles with TLS *disabled* and every `wss://` and `https://`
+connection fails during the handshake — silently, because the program turns
+mongoose's logging down. With `-DMG_TLS=MG_TLS_BUILTIN`, Alpaca works but
+Coinbase does not: mongoose's built-in verifier contains
+
+```c
+} else if (issuer->pubkey.len == 96) {
+  MG_ERROR(("reject secp386 for now"));
+  return 0;
+```
+
+and Coinbase is fronted by Cloudflare, whose chain contains a P-384
+intermediate. `.skip_verification` does not help, because the chain-signature
+loop is not gated on it. OpenSSL connects to both endpoints. This was
+confirmed by building each configuration and probing the live endpoints.
+
+Cross-compiling from a PC works too:
+
+```bash
+make CC=arm-linux-gnueabihf-gcc
+```
+
+but you need `libssl-dev:armhf` for the target, which is usually more trouble
+than building on the board.
+
+## 10.4 Building the FPGA bitstream
+
+```bash
+cd D:/Projects/OrCAD/FMMA
+D:/Software/quartus/bin64/quartus_sh.exe --flow compile HFTTop
+```
+
+Roughly an hour, almost all of it in the fitter (the HPS hard IP dominates).
+Output: `output_files/HFTTop.sof`.
+
+Expected result: **0 errors**, and exactly two Critical Warnings, both about
+HPS DDR3 pin placement (169085 and 174073). Those are explained in
+[05](05-fpga-design.md) §5.7 and are not a functional problem — the pins are
+placed by the hard IP. A third Critical Warning, 127003 about a missing
+memory initialisation file, used to appear and should **not** any more; if
+you see it, the on-chip RAM has picked up an initialisation path again and
+the boot contract in [07](07-shared-memory-protocol.md) §7.4 is no longer
+guaranteed.
+
+To program the board:
+
+```bash
+D:/Software/quartus/bin64/quartus_pgm.exe -m jtag -o "p;output_files/HFTTop.sof"
+```
+
+or use the Quartus Programmer GUI. See [11](11-board-bringup.md) §11.4.
+
+## 10.5 Running the tests
+
+```bash
+Testbenches/run_sim.sh          # everything: Python + RTL, ~25 s
+Testbenches/run_sim.sh --quick  # Python only, ~2 s
+Testbenches/run_sim.bat         # same, from a Windows prompt
+```
+
+The script regenerates the memory map and the program first, so it also
+catches a stale generated file. It exits non-zero on any failure.
+[12](12-verification-plan.md) describes what each stage proves.
+
+## 10.6 Machine-specific notes
+
+These are peculiar to this project's development machine and are recorded so
+the knowledge is not lost. [BUILD-NOTES.md](BUILD-NOTES.md) has the full
+detail; the summary:
+
+**Quartus Lite has no EMIF IP.** `qsys-generate` cannot regenerate the Qsys
+system on this machine — it stops in `generate_hps_sdram.tcl`. Four generated
+files were therefore taken from a public mirror of equivalent Qsys output and
+are listed directly in the QSF. If you regenerate on a machine with the full
+stack, **delete those four lines first** or you will get duplicate module
+definitions.
+
+**Two files had to be edited by hand for the same reason.** The on-chip RAM's
+read-during-write mode and initialisation file are set in
+`Software/HPSfgpa2.qsys` *and* in the generated
+`Software/HPSfgpa2/synthesis/submodules/HPSfgpa2_onchip_memory2_0.v`. The
+`.qsys` edit is what a future regeneration will honour; the generated-file
+edit is what the current build actually compiles. Both are annotated in
+place. If you regenerate, check that the regenerated file says
+`read_during_write_mode_mixed_ports = "OLD_DATA"` and
+`INIT_FILE = "UNUSED"`, and delete the hand edits.
+
+**The Nios II command shell mis-detects WSL2.** Its `grep -q Microsoft
+/proc/version` fails because WSL2 reports `microsoft-standard-WSL2` in
+lowercase, which puts a non-existent toolchain directory on `PATH`. Fixed
+with a case-insensitive grep and a native `.bat` replacement; see
+BUILD-NOTES §1.
+
+**No Questa licence.** Simulation is Icarus Verilog. The installed
+`questa_fse` refuses to start without a licence file.
+
+## 10.7 Clean rebuild from a fresh clone
+
+```bash
+git clone <repo> && cd FMMA
+
+# 1. generated sources and the program
+cd Software && make protocol && make program && cd ..
+
+# 2. tests, before you trust anything
+Testbenches/run_sim.sh
+
+# 3. the bitstream (about an hour)
+D:/Software/quartus/bin64/quartus_sh.exe --flow compile HFTTop
+
+# 4. the host program — on the board
+scp -r Software root@<board-ip>:/root/fmma
+ssh root@<board-ip> 'cd /root/fmma && make'
+```
+
+Step 2 should print `all green`. If it does not, stop there; nothing after it
+is meaningful.

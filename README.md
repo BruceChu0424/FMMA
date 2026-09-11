@@ -1,182 +1,198 @@
 # FMMA — FPGA Market Maker Accelerator
 
-A low-latency market-making prototype on the DE1-SoC (Cyclone V SoC).
-A custom 32-bit RISC CPU in the FPGA fabric makes trading decisions on
-live market data, while the hard processor system (HPS, ARM Cortex-A9
-running Linux) handles all networking: it streams prices from the
-Coinbase WebSocket feed into a shared on-chip RAM over the lightweight
-AXI bridge, and executes the CPU's trading signals as paper orders on
-Alpaca.
+A low-latency trading system on the Terasic DE1-SoC. A custom 32-bit RISC
+CPU in the Cyclone V fabric makes the trading decisions; the ARM Cortex-A9
+on the same die does the networking. Live quotes from Coinbase go in, paper
+orders to Alpaca come out, and the decision in between takes **3.9 µs,
+deterministically**.
 
-**Status (Sep 2026):** the full chain is implemented and verified.
-Simulation passes 8/8 (`Testbenches/tb_HFTTop.v`); the Quartus flow
-completes end to end — synthesis, fitter, timing (worst setup slack
-+2.55 ns at 50 MHz) and `output_files/HFTTop.sof` is generated
-(1,652 ALMs = 5 % of the device). Remaining step: on-board demo.
+ECE 4900 senior design, Utah State University — group 20.
+Built on the 32-bit CPU designed in ECE 3710 by group 1011.
 
 ```
-Coinbase WS (BTC-USD)                           Alpaca paper trading
-        │                                              ▲
-        ▼                                              │ POST /v2/orders
-┌─────────────────────── HPS / Linux ───────────────────┴────────┐
-│  MarketStream.c (mongoose)                                     │
-│   • parse match messages (price/size/side)                     │
-│   • mmap 0xFF200000 -> write prices into shared RAM            │
-│   • poll SIGNAL/HEARTBEAT words -> send orders                 │
-└───────────────┬──────────────────────────────▲─────────────────┘
-                │ LW AXI bridge (s1)           │
-┌───────────────▼──────────────────────────────┴─────────────────┐
-│            4 KB dual-port on-chip RAM (Qsys system)            │
-└───────────────▲──────────────────────────────┬─────────────────┘
-                │ s2 (fetch / load / store)    │
-┌───────────────┴──────────────────────────────▼─────────────────┐
-│  Custom 32-bit RISC CPU (ECE 3710 group 1011 design)           │
-│   16 x 32-bit regs · 3-cycle FSM · runs trading.asm            │
-│   self-starts when the HPS loader writes the program           │
-└────────────────────────────────────────────────────────────────┘
+   Coinbase ticker (TLS/WebSocket)                Alpaca paper trading
+            │                                              ▲
+            ▼                                              │ POST /v2/orders
+  ┌───────────────── HPS: ARM Cortex-A9, Linux ────────────┴──────────┐
+  │  MarketStream.c                                                   │
+  │    parse "97431.02" -> 9743102   (exact integers, no float)       │
+  │    publish through a seqlock, poll SIGNAL_SEQ for an edge         │
+  │    execute, check the status, report the fill back                │
+  └───────────────┬──────────────────────────────────▲────────────────┘
+                  │  lightweight AXI bridge, 0xFF200000, 50 MHz
+  ┌───────────────▼──────────────────────────────────┴────────────────┐
+  │            4 KB dual-port on-chip RAM  (the contract)             │
+  │   0-7 reserved │ 8-255 program │ 256+ inputs │ 320+ outputs       │
+  └───────────────▲──────────────────────────────────┬────────────────┘
+                  │  port s2: fetch / load / store   │
+  ┌───────────────┴──────────────────────────────────▼────────────────┐
+  │  Custom 32-bit RISC CPU running trading.asm                       │
+  │    16 registers · 3 cycles per instruction · 780 ns loop          │
+  │    mean-reversion strategy + position limits, enforced in fabric  │
+  └───────────────────────────────────────────────────────────────────┘
 ```
+
+## Status
+
+| | |
+|---|---|
+| Simulation | **green** — 82 Python tests, ~9,500 ALU equivalence vectors, 31 full-chain RTL assertions, all in 25 s |
+| FPGA build | **timing closed** at 50 MHz — see [docs/13](docs/13-test-report.md) |
+| Host program | **builds clean** under `-Wall -Wextra`, links against OpenSSL |
+| On board | **outstanding** — [docs/11](docs/11-board-bringup.md) is the procedure |
+
+## Start here
+
+* **[docs/](docs/README.md)** — the engineering record, 18 documents
+* **[docs/07-shared-memory-protocol.md](docs/07-shared-memory-protocol.md)** — the HPS↔FPGA contract, and the most important thing to read
+* **[docs/11-board-bringup.md](docs/11-board-bringup.md)** — bare board to running demo
+* **[CHANGELOG.md](CHANGELOG.md)** — what changed and why
+
+## Quick start
+
+### Run the tests (no hardware needed)
+
+```bash
+Testbenches/run_sim.sh
+```
+
+About 25 seconds. Prints `all green`, and the measured latency figures.
+
+### Build the FPGA image
+
+```bash
+quartus_sh --flow compile HFTTop        # about an hour
+quartus_pgm -m jtag -o "p;output_files/HFTTop.sof"
+```
+
+`HEX0` should then show a steady `8` — the CPU is parked at its entry word
+waiting for a program. That single digit confirms the fabric is configured,
+the CPU is out of reset and the shared RAM came up zeroed.
+
+### Run it on the board
+
+```bash
+cd Software
+make                                    # needs build-essential and libssl-dev
+export APCA_API_KEY_ID=...              # paper keys; never commit them
+export APCA_API_SECRET_KEY=...
+sudo -E ./marketstream --dry-run --verbose
+```
+
+```
+=== FMMA: BTC-USD -> FPGA -> Alpaca (protocol v2) ===
+Shared RAM mapped at 0xFF200000 (1024 words).
+[LOADER] Writing 154 program words at word 8 (entry word last).
+[LOADER] Program verified.
+[LOADER] CPU running: protocol v2, heartbeat 41233, position 0.
+[FEED] connected, subscribed to BTC-USD ticker
+[MARKET] bid 97431.02  ask 97431.98
+>>> [FPGA] BUY  (tick 34, 812 us after the quote was published, position 0)
+[EXEC] dry run: would send buy 0.001 BTCUSD
+```
+
+Drop `--dry-run` to trade the paper account. `--no-fpga` runs the whole
+thing on a laptop with no board and no root.
 
 ## What is where
 
 | Path | Contents |
 |------|----------|
-| `Software/HFTtop.v` | FPGA top level (referenced by the QSF; `Code/HFTtop.v` is a synced copy) |
-| `Code/` | CPU modules (ALU, FSM, PC, IR, FR, reg bank, muxes, encoder, 7-seg decoder) |
-| `Software/HPSfgpa2*/` | Platform Designer system: HPS + 4 KB dual-port on-chip RAM |
-| `Software/trading.asm` | The market-making strategy for the CPU |
-| `Software/Assembler.py` | Assembler for the CPU; emits `fpga_program.h/.hex/.bin` |
-| `Software/MarketStream.c` | HPS program: loader + WebSocket feed + Alpaca execution |
-| `Software/Makefile` | Native build on the board |
-| `Testbenches/tb_HFTTop.v` | Full-chain self-checking testbench (+ `HPSfgpa2_stub.v`) |
-| `Documents/PROTOCOL.md` | **The HPS ↔ FPGA shared-memory contract** |
-| `Documents/BUILD-NOTES.md` | Quartus/WSL/Nios II build fixes on this machine |
-| `Documents/` | ECE 3710 final report + original project topic |
+| `Software/HFTtop.v` | FPGA top level (`Code/HFTtop.v` is a synced archive copy) |
+| `Code/` | The CPU: ALU, control FSM, PC, IR, flags, register bank, muxes, 7-seg decoder |
+| `Software/HPSfgpa2*` | Platform Designer system: HPS + 4 KB dual-port on-chip RAM |
+| `Software/protocol.py` | **The memory map.** Generates the C, assembly and Verilog copies |
+| `Software/fmma_isa.py` | **The ISA.** What the assembler and the simulator are both built from |
+| `Software/Assembler.py` | Assembler → `.h`, `.hex`, `.bin`, `.mif`, `.lst` |
+| `Software/fmma_sim.py` | Golden-reference instruction set simulator |
+| `Software/trading.asm` | The strategy |
+| `Software/MarketStream.c` | The host program: feed, loader, execution, instrumentation |
+| `Software/test_*.py` | Python test suites |
+| `Testbenches/` | RTL testbenches, the Qsys stub, and `run_sim.sh` |
+| `docs/` | The engineering record |
 
-## Shared memory protocol (summary)
+## The memory map, in brief
 
-Word indices in the 4 KB RAM; full contract in
-[Documents/PROTOCOL.md](Documents/PROTOCOL.md):
+Word indices into the 4 KB shared RAM. Full contract in
+[docs/07](docs/07-shared-memory-protocol.md).
 
-| Word | Name | Direction | Meaning |
-|------|------|-----------|---------|
-| 0–7 | reserved | — | must stay zero |
-| 8–63 | program | HPS→FPGA | CPU program, written once at startup |
-| 64 | `BUY_PRICE` | HPS→FPGA | price × 10000 |
-| 65 | `SELL_PRICE` | HPS→FPGA | price × 10000 |
-| 66 | `SIGNAL` | FPGA→HPS | 1 = buy, 2 = sell (HPS clears after acting) |
-| 67 | `HEARTBEAT` | FPGA→HPS | loop counter, proves the CPU is alive |
-| 68 / 69 | `BUY_SIZE` / `SELL_SIZE` | HPS→FPGA | trade sizes |
+| Words | Direction | Contents |
+|-------|-----------|----------|
+| 0–7 | — | reserved, must stay zero (a zero word is the CPU's HALT) |
+| 8–255 | HPS → FPGA | the CPU program |
+| 256–270 | HPS → FPGA | `TICK_SEQ`, `BID`, `ASK`, sizes, configuration, fill reports |
+| 320–329 | FPGA → HPS | `HEARTBEAT`, `SIGNAL`, `SIGNAL_SEQ`, `POSITION`, `STATUS`, `REJECTS`, `FW_VERSION` |
 
-Strategy (`trading.asm`): signal **buy** on a crossed market
-(buy < sell) or when the price dips more than $10 below the previous
-tick; signal **sell** when it spikes more than $10 above it.
+Two properties make it safe without any locks: market data is written under
+a **seqlock** (the sequence number is odd while the block is being written),
+and decisions are published by incrementing a counter **last**, which the
+host only ever reads. The two sides never write the same word, and the
+testbench asserts it.
+
+## The strategy
+
+Mean reversion on the mid price, with the risk check in hardware:
+
+```
+mid2 = bid + ask                                   (twice the mid; no divide)
+if mid2 < anchor - 2*THRESH  and  position < +MAX:   BUY
+if mid2 > anchor + 2*THRESH  and  position > -MAX:   SELL
+anchor = mid2
+```
+
+Threshold, position limit and a master switch are all read from shared
+memory at run time, so retuning is a command-line flag rather than a
+rebuild. [docs/08](docs/08-trading-strategy.md) explains the design, and
+§8.6 is explicit about what a real market maker would do that this does not.
 
 ## Requirements
 
-**Hardware:** DE1-SoC board, microSD card with a Cyclone V Linux
-image (the team used the Cornell ECE5760 image), Ethernet, USB-Blaster.
+**Hardware:** DE1-SoC, a microSD card with a Cyclone V Linux image, Ethernet
+with a route to the internet, USB-Blaster.
 
-**Windows:** Quartus Prime 25.1 (project in `HFTTop.qpf`), Python 3
-for the assembler, Icarus Verilog (optional, simulation) — see
-`Documents/BUILD-NOTES.md` for the toolchain quirks on this machine.
+**Development PC:** Quartus Prime Lite 25.1, Python 3, Icarus Verilog
+(`winget install Icarus.Verilog`). See
+[docs/10](docs/10-build-guide.md) for the toolchain traps on this machine —
+there are several, and two of them will produce a binary that silently
+cannot connect to anything.
 
-**On the board (HPS Linux):** `build-essential`, network access
-(DNS + default route).
+**On the board:** `build-essential`, `libssl-dev`, and a default route.
 
-## 1. HPS/Linux bring-up
+## Measured
 
-1. Boot Linux from the microSD card.
-2. Serial console (PuTTY): your COM port, 115200 baud.
-3. Networking (once per boot):
-   ```
-   echo "nameserver 8.8.8.8" >> /etc/resolv.conf
-   ip route add default via <router-ip> dev eth0
-   ping -c 3 google.com
-   ```
-4. Copy the software over (`scp`/`pscp` or git).
+| | |
+|---|---|
+| Instruction | 3 cycles = 60 ns, always |
+| Strategy loop (staleness bound) | 39 cycles = **780 ns** |
+| Quote published → decision published | 195 cycles = **3.90 µs** |
+| Jitter | zero — no cache, no interrupts, no OS |
+| Program | 154 words of 248 available |
 
-## 2. Build the FPGA image
+[docs/14](docs/14-latency-and-performance.md) has the breakdown, the
+hardware-versus-software comparison, and an honest account of where this
+sits relative to the tens of milliseconds the internet contributes.
 
-```
-cd D:\Projects\OrCAD\FMMA
-quartus_sh --flow compile HFTTop
-```
-Program `output_files/HFTTop.sof` via the Quartus Programmer.
-HEX0 shows the low nibble of the CPU program counter — a steady
-`8` means "waiting for a program" (normal after programming).
+## Safety
 
-## 3. Build & run the HPS software
+**Paper trading only.** The endpoint is hard-coded to Alpaca's paper API.
+Credentials come from the environment and never from the source tree.
+Position limits are enforced in the fabric, on the decision path, so a
+broken host cannot bypass them.
 
-```
-cd Software
-python Assembler.py trading.asm      # regenerates fpga_program.h
-make                                 # -> ./marketstream
-export APCA_API_KEY_ID=...           # Alpaca paper keys (never commit them)
-export APCA_API_SECRET_KEY=...
-sudo ./marketstream
-```
+> **A previously committed API key is still present in this repository's git
+> history (commit `d65ee28`). It must be revoked.** See
+> [docs/18](docs/18-security-and-compliance.md) §18.4.
 
-Expected console flow:
+## Licence
 
-```
-[LOADER] Writing 45 program words at word 8 ...
-[LOADER] Program verified.
-[LOADER] Waiting for the CPU heartbeat ...
-[LOADER] CPU is running (heartbeat = 1).
-Connected to Coinbase, subscribing to BTC-USD matches ...
-[MARKET] $97432.10 x 0.0013 (sell) -> FPGA
-[FPGA] heartbeat = 1234
->>> [FPGA] Signal: BUY (crossed or dipped market)      <- CPU decision
-*** [EXECUTION] Sending buy order to Alpaca ***
-[ALPACA] Response: HTTP/1.1 200 OK ...
-```
-
-Without `sudo` the program runs in simulation mode (no `/dev/mem`):
-the Coinbase feed and Alpaca paths still work, FPGA I/O is skipped.
-
-## 4. Simulation (no hardware needed)
-
-```
-cd Testbenches
-iverilog -g2005 -o tb.vvp ../Software/HFTtop.v ../Code/PC.v ../Code/IR \
-   ../Code/FR ../Code/registerFinal ../Code/MUX16to1 ../Code/MUX2to1 \
-   ../Code/ALUFinal ../Code/FSMTrial ../Code/disp ../Code/Encoder4to16 \
-   ../Code/decoder.v HPSfgpa2_stub.v tb_HFTTop.v
-vvp tb.vvp
-```
-
-Checks: CPU waits at PC=8 while RAM is empty; starts when the
-program is loaded; crossed market -> SIGNAL 1; quiet market -> no
-signal; $105 dip -> SIGNAL 1; $155 spike -> SIGNAL 2.
-
-## Troubleshooting
-
-* **Readback mismatch at word 8** — wrong bridge base or the FPGA is
-  not programmed. The design uses the **lightweight** bridge at
-  `0xFF200000`; the old full-H2F address `0xC8000000` is wrong for
-  this Qsys system.
-* **No heartbeat** — the bitstream predates the memory map, or the
-  RAM window maps to the wrong address. Rebuild and reprogram.
-* **Orders skipped** — `APCA_API_KEY_ID`/`APCA_API_SECRET_KEY` not
-  exported.
-* **`make` on the board fails on `fpga_program.h`** — run the
-  assembler first (see step 3).
-
-## Known limitations / next steps
-
-* The CPU polls shared RAM; a true interrupt/doorbell from the HPS
-  would cut decision latency further (currently ~2 µs per loop at
-  50 MHz).
-* One signal word, one product (`BTC-USD`); the map has room for a
-  small order book.
-* The FPGA-side DDR3 PHY files come from a mirror because this
-  machine's Quartus lacks the EMIF IP (details and the clean-up
-  steps in `Documents/BUILD-NOTES.md`).
-* Coinbase matches are taker-side prints, not real bid/ask — fine
-  for the demo, not for real quotes.
+GPL-2.0 — see [LICENSE](LICENSE). This follows from linking against
+mongoose, which is GPL-2.0-only; [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+lists every third-party component and the alternatives.
 
 ## Credits
 
-Custom CPU designed in ECE 3710 (group 1011: Henry Wilson, Bobby
-Lofgren, Kaleb Neilson, Carson Ord). Continued as an ECE 4900 senior
-project (Carlos Zavala, Kaleb Neilson, Zhenwei Zhu).
+CPU designed in ECE 3710 by group 1011: Henry Wilson, Bobby Lofgren, Kaleb
+Neilson, Carson Ord.
+
+Continued as an ECE 4900 senior project by Carlos Zavala, Kaleb Neilson and
+Zhenwei Zhu, advised by Jon Davies.

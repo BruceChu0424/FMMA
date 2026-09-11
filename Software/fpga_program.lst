@@ -1,0 +1,217 @@
+FMMA assembler listing - 154 words at base 8
+
+Symbols:
+    SIGNAL_NONE          = 0
+    SIGNAL_BUY           = 1
+    FILL_BOUGHT          = 1
+    STATUS_RUNNING       = 1
+    PROTOCOL_VERSION     = 2
+    SIGNAL_SELL          = 2
+    FILL_SOLD            = 2
+    STATUS_DATA_VALID    = 2
+    STATUS_RISK_BLOCKED  = 4
+    PROGRAM_BASE         = 8
+    STATUS_DISABLED      = 8
+    INIT                 = 8
+    LOOP                 = 46
+    FILL_WAS_SOLD        = 65
+    FILL_DONE            = 66
+    NOFILL               = 68
+    PRICE_SCALE          = 100
+    SET_ANCHOR           = 103
+    DO_BUY               = 105
+    BUY_ALLOWED          = 115
+    DO_SELL              = 117
+    SELL_ALLOWED         = 129
+    EMIT                 = 131
+    RISK_BLOCK           = 143
+    DISABLED_BLOCK       = 145
+    COUNT_REJECT         = 146
+    DO_RESTART           = 154
+    ISA_MISMATCH         = 158
+    PROGRAM_LIMIT        = 256
+    INPUT_BASE           = 256
+    TICK_SEQ             = 256
+    BID                  = 257
+    ASK                  = 258
+    BID_SIZE             = 259
+    ASK_SIZE             = 260
+    CFG_THRESH           = 261
+    CFG_MAX_POS          = 262
+    CFG_ENABLE           = 263
+    CFG_HALF_SPREAD      = 264
+    CFG_SKEW             = 265
+    CFG_RESTART          = 266
+    FILL_SEQ             = 267
+    FILL_SIDE            = 268
+    FILL_QTY             = 269
+    CFG_POSITION         = 270
+    OUTPUT_BASE          = 320
+    HEARTBEAT            = 320
+    SIGNAL               = 321
+    SIGNAL_TICK          = 322
+    SIGNAL_SEQ           = 323
+    POSITION             = 324
+    STATUS               = 325
+    REJECTS              = 326
+    FW_VERSION           = 327
+    QUOTE_BID            = 328
+    QUOTE_ASK            = 329
+    MEM_WORDS            = 1024
+
+Code:
+
+     8  0x00000030  XOR R0, R0                    ; XOR  R0, R0
+     9  0x0000F101  MOV R1, #1                    ; LDI  R1, #1
+    10  0x0001F200  MOV R2, #256                  ; LDI  R2, #TICK_SEQ
+    11  0x0001F340  MOV R3, #320                  ; LDI  R3, #HEARTBEAT
+    12  0x00000939  XOR R9, R9                    ; XOR  R9,  R9
+    13  0x00000B3B  XOR R11, R11                  ; XOR  R11, R11
+    14  0x00000C3C  XOR R12, R12                  ; XOR  R12, R12
+    15  0x0001F40E  MOV R4, #270                  ; LDI  R4, #CFG_POSITION
+    16  0x00004D04  LOAD R13, R4                  ; LOAD R13, R4
+    17  0x0001F40B  MOV R4, #267                  ; LDI  R4, #FILL_SEQ
+    18  0x00004E04  LOAD R14, R4                  ; LOAD R14, R4
+    19  0x00000737  XOR R7, R7                    ; XOR  R7, R7
+    20  0x0001F441  MOV R4, #321                  ; LDI  R4, #SIGNAL
+    21  0x00004744  STOR R7, R4                   ; STOR R7, R4
+    22  0x0001F442  MOV R4, #322                  ; LDI  R4, #SIGNAL_TICK
+    23  0x00004744  STOR R7, R4                   ; STOR R7, R4
+    24  0x0001F443  MOV R4, #323                  ; LDI  R4, #SIGNAL_SEQ
+    25  0x00004744  STOR R7, R4                   ; STOR R7, R4
+    26  0x0001F444  MOV R4, #324                  ; LDI  R4, #POSITION
+    27  0x00004D44  STOR R13, R4                  ; STOR R13, R4
+    28  0x0001F446  MOV R4, #326                  ; LDI  R4, #REJECTS
+    29  0x00004744  STOR R7, R4                   ; STOR R7, R4
+    30  0x0001F448  MOV R4, #328                  ; LDI  R4, #QUOTE_BID
+    31  0x00004744  STOR R7, R4                   ; STOR R7, R4
+    32  0x0001F449  MOV R4, #329                  ; LDI  R4, #QUOTE_ASK
+    33  0x00004744  STOR R7, R4                   ; STOR R7, R4
+    34  0x0000F701  MOV R7, #1                    ; LDI  R7, #STATUS_RUNNING
+    35  0x0001F445  MOV R4, #325                  ; LDI  R4, #STATUS
+    36  0x00004744  STOR R7, R4                   ; STOR R7, R4
+    37  0x0000F80A  MOV R8, #10                   ; LDI  R8, #10
+    38  0x00009803  SUB R8, #3                    ; SUB  R8, #3
+    39  0x0000F707  MOV R7, #7                    ; LDI  R7, #7
+    40  0x000008B7  CMP R8, R7                    ; CMP  R8, R7
+    41  0x0000C175  BNE +117                      ; BNE  ISA_MISMATCH
+    42  0x0000F702  MOV R7, #2                    ; LDI  R7, #PROTOCOL_VERSION
+    43  0x0001F447  MOV R4, #327                  ; LDI  R4, #FW_VERSION
+    44  0x00004744  STOR R7, R4                   ; STOR R7, R4
+    45  0x0000FF2E  MOV R15, #46                  ; LDI  R15, #LOOP
+    46  0x00000C51  ADD R12, R1                   ; ADD  R12, R1
+    47  0x00004C43  STOR R12, R3                  ; STOR R12, R3
+    48  0x0001F40A  MOV R4, #266                  ; LDI  R4, #CFG_RESTART
+    49  0x00004804  LOAD R8, R4                   ; LOAD R8, R4
+    50  0x000008B0  CMP R8, R0                    ; CMP  R8, R0
+    51  0x0000C167  BNE +103                      ; BNE  DO_RESTART
+    52  0x00000451  ADD R4, R1                    ; ADD  R4, R1
+    53  0x00004804  LOAD R8, R4                   ; LOAD R8, R4
+    54  0x000008BE  CMP R8, R14                   ; CMP  R8, R14
+    55  0x0000C00D  BEQ +13                       ; BEQ  NOFILL
+    56  0x00000EF8  MOV R14, R8                   ; MOV  R14, R8
+    57  0x0001F40C  MOV R4, #268                  ; LDI  R4, #FILL_SIDE
+    58  0x00004804  LOAD R8, R4                   ; LOAD R8, R4
+    59  0x0001F40D  MOV R4, #269                  ; LDI  R4, #FILL_QTY
+    60  0x00004404  LOAD R4, R4                   ; LOAD R4, R4
+    61  0x000008B1  CMP R8, R1                    ; CMP  R8, R1
+    62  0x0000C103  BNE +3                        ; BNE  FILL_WAS_SOLD
+    63  0x00000D54  ADD R13, R4                   ; ADD  R13, R4
+    64  0x0000CE02  BUC +2                        ; BUC  FILL_DONE
+    65  0x00000D94  SUB R13, R4                   ; SUB  R13, R4
+    66  0x0001F444  MOV R4, #324                  ; LDI  R4, #POSITION
+    67  0x00004D44  STOR R13, R4                  ; STOR R13, R4
+    68  0x00004702  LOAD R7, R2                   ; LOAD R7, R2
+    69  0x000007BB  CMP R7, R11                   ; CMP  R7, R11
+    70  0x0000C0E8  BEQ -24                       ; BEQ  LOOP
+    71  0x000008F7  MOV R8, R7                    ; MOV  R8, R7
+    72  0x00000811  AND R8, R1                    ; AND  R8, R1
+    73  0x000008B0  CMP R8, R0                    ; CMP  R8, R0
+    74  0x0000C1E4  BNE -28                       ; BNE  LOOP
+    75  0x000004F2  MOV R4, R2                    ; MOV  R4, R2
+    76  0x00000451  ADD R4, R1                    ; ADD  R4, R1
+    77  0x00004504  LOAD R5, R4                   ; LOAD R5, R4
+    78  0x00000451  ADD R4, R1                    ; ADD  R4, R1
+    79  0x00004604  LOAD R6, R4                   ; LOAD R6, R4
+    80  0x00004802  LOAD R8, R2                   ; LOAD R8, R2
+    81  0x000008B7  CMP R8, R7                    ; CMP  R8, R7
+    82  0x0000C1DC  BNE -36                       ; BNE  LOOP
+    83  0x00000BF7  MOV R11, R7                   ; MOV  R11, R7
+    84  0x000005B0  CMP R5, R0                    ; CMP  R5, R0
+    85  0x0000C0D9  BEQ -39                       ; BEQ  LOOP
+    86  0x000006B0  CMP R6, R0                    ; CMP  R6, R0
+    87  0x0000C0D7  BEQ -41                       ; BEQ  LOOP
+    88  0x000007F5  MOV R7, R5                    ; MOV  R7, R5
+    89  0x00000756  ADD R7, R6                    ; ADD  R7, R6
+    90  0x000009B0  CMP R9, R0                    ; CMP  R9, R0
+    91  0x0000C00C  BEQ +12                       ; BEQ  SET_ANCHOR
+    92  0x0001F405  MOV R4, #261                  ; LDI  R4, #CFG_THRESH
+    93  0x00004804  LOAD R8, R4                   ; LOAD R8, R4
+    94  0x00000858  ADD R8, R8                    ; ADD  R8, R8
+    95  0x00000AF9  MOV R10, R9                   ; MOV  R10, R9
+    96  0x00000A98  SUB R10, R8                   ; SUB  R10, R8
+    97  0x000007BA  CMP R7, R10                   ; CMP  R7, R10
+    98  0x0000C607  BLT +7                        ; BLT  DO_BUY
+    99  0x00000AF9  MOV R10, R9                   ; MOV  R10, R9
+   100  0x00000A58  ADD R10, R8                   ; ADD  R10, R8
+   101  0x00000AB7  CMP R10, R7                   ; CMP  R10, R7
+   102  0x0000C60F  BLT +15                       ; BLT  DO_SELL
+   103  0x000009F7  MOV R9, R7                    ; MOV  R9, R7
+   104  0x00004ECF  JUC R15                       ; JUC  R15
+   105  0x000009F7  MOV R9, R7                    ; MOV  R9, R7
+   106  0x0001F407  MOV R4, #263                  ; LDI  R4, #CFG_ENABLE
+   107  0x00004804  LOAD R8, R4                   ; LOAD R8, R4
+   108  0x000008B0  CMP R8, R0                    ; CMP  R8, R0
+   109  0x0000C024  BEQ +36                       ; BEQ  DISABLED_BLOCK
+   110  0x0001F406  MOV R4, #262                  ; LDI  R4, #CFG_MAX_POS
+   111  0x00004804  LOAD R8, R4                   ; LOAD R8, R4
+   112  0x00000DB8  CMP R13, R8                   ; CMP  R13, R8
+   113  0x0000C602  BLT +2                        ; BLT  BUY_ALLOWED
+   114  0x0000CE1D  BUC +29                       ; BUC  RISK_BLOCK
+   115  0x0000F701  MOV R7, #1                    ; LDI  R7, #SIGNAL_BUY
+   116  0x0000CE0F  BUC +15                       ; BUC  EMIT
+   117  0x000009F7  MOV R9, R7                    ; MOV  R9, R7
+   118  0x0001F407  MOV R4, #263                  ; LDI  R4, #CFG_ENABLE
+   119  0x00004804  LOAD R8, R4                   ; LOAD R8, R4
+   120  0x000008B0  CMP R8, R0                    ; CMP  R8, R0
+   121  0x0000C018  BEQ +24                       ; BEQ  DISABLED_BLOCK
+   122  0x0001F406  MOV R4, #262                  ; LDI  R4, #CFG_MAX_POS
+   123  0x00004804  LOAD R8, R4                   ; LOAD R8, R4
+   124  0x00000A3A  XOR R10, R10                  ; XOR  R10, R10
+   125  0x00000A98  SUB R10, R8                   ; SUB  R10, R8
+   126  0x00000ABD  CMP R10, R13                  ; CMP  R10, R13
+   127  0x0000C602  BLT +2                        ; BLT  SELL_ALLOWED
+   128  0x0000CE0F  BUC +15                       ; BUC  RISK_BLOCK
+   129  0x0000F702  MOV R7, #2                    ; LDI  R7, #SIGNAL_SELL
+   130  0x0000CE01  BUC +1                        ; BUC  EMIT
+   131  0x0001F441  MOV R4, #321                  ; LDI  R4, #SIGNAL
+   132  0x00004744  STOR R7, R4                   ; STOR R7, R4
+   133  0x0001F442  MOV R4, #322                  ; LDI  R4, #SIGNAL_TICK
+   134  0x00004B44  STOR R11, R4                  ; STOR R11, R4
+   135  0x0000F701  MOV R7, #1                    ; LDI  R7, #STATUS_RUNNING
+   136  0x0001F445  MOV R4, #325                  ; LDI  R4, #STATUS
+   137  0x00004744  STOR R7, R4                   ; STOR R7, R4
+   138  0x0001F443  MOV R4, #323                  ; LDI  R4, #SIGNAL_SEQ
+   139  0x00004804  LOAD R8, R4                   ; LOAD R8, R4
+   140  0x00000851  ADD R8, R1                    ; ADD  R8, R1
+   141  0x00004844  STOR R8, R4                   ; STOR R8, R4
+   142  0x00004ECF  JUC R15                       ; JUC  R15
+   143  0x0000F704  MOV R7, #4                    ; LDI  R7, #STATUS_RISK_BLOCKED
+   144  0x0000CE02  BUC +2                        ; BUC  COUNT_REJECT
+   145  0x0000F708  MOV R7, #8                    ; LDI  R7, #STATUS_DISABLED
+   146  0x00000751  ADD R7, R1                    ; ADD  R7, R1
+   147  0x0001F445  MOV R4, #325                  ; LDI  R4, #STATUS
+   148  0x00004744  STOR R7, R4                   ; STOR R7, R4
+   149  0x0001F446  MOV R4, #326                  ; LDI  R4, #REJECTS
+   150  0x00004804  LOAD R8, R4                   ; LOAD R8, R4
+   151  0x00000851  ADD R8, R1                    ; ADD  R8, R1
+   152  0x00004844  STOR R8, R4                   ; STOR R8, R4
+   153  0x00004ECF  JUC R15                       ; JUC  R15
+   154  0x00000838  XOR R8, R8                    ; XOR  R8, R8
+   155  0x00004844  STOR R8, R4                   ; STOR R8, R4
+   156  0x0000F408  MOV R4, #8                    ; LDI  R4, #INIT
+   157  0x00004EC4  JUC R4                        ; JUC  R4
+   158  0x00000C51  ADD R12, R1                   ; ADD  R12, R1
+   159  0x00004C43  STOR R12, R3                  ; STOR R12, R3
+   160  0x0000F49E  MOV R4, #158                  ; LDI  R4, #ISA_MISMATCH
+   161  0x00004EC4  JUC R4                        ; JUC  R4

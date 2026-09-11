@@ -1,374 +1,499 @@
 #!/usr/bin/env python3
-"""FMMA assembler for the custom 32-bit RISC CPU (ECE 3710 group 1011 ISA).
+"""Assembler for the FMMA CPU.
 
-Instruction encodings (see Documents/PROTOCOL.md):
+Turns an assembly source file into the images the rest of the system needs:
 
-  R-type :  0000 <rd:4>   <op:4>    <rs:4>       upper 16 bits unused
-  I-type :  <imm[23:8]>   <op:4>    <rd:4>  <imm[7:0]>
-  LOAD   :  0100 <rd:4>   0000 <raddr:4>
-  STOR   :  0100 <rdata:4> 0100 <raddr:4>
-  BRANCH :  1100 <cond:4> <disp:8>            disp is relative to the branch
-  JUMP   :  0100 <cond:4> 1100 <rtarget:4>    absolute target read from a register
+  fpga_program.hex   one 8-digit hex word per line  ($readmemh, simulation)
+  fpga_program.bin   one 32-bit binary word per line (archive format)
+  fpga_program.h     C array for the HPS loader in MarketStream.c
+  fpga_program.mif   Quartus memory initialisation file for the on-chip RAM
+  fpga_program.lst   annotated listing (source line -> address -> encoding)
 
-Branch condition codes implemented in hardware (FSMTrial):
-  EQ=0000 NE=0001 GT=0110 (taken when N=1, i.e. after CMP a,b when a<b)
-  GE=1101 (Z=1 or N=1)   UC=1110 (always)
+The instruction encodings live in ``fmma_isa.py``, which is written against
+the RTL in ``Code/``; this file is only the parser and the two-pass label
+resolver.  ``docs/04-isa-reference.md`` is the prose reference.
 
-A 32'b0 word parks the CPU in its halt/wait state, so programs must not
-contain all-zero instructions.
+Syntax
+------
+  label:                          a label, on its own line or before an insn
+  OP    Rd, Rs                    R-type      Rd = Rd OP Rs
+  OP    Rd, #imm                  I-type      Rd = Rd OP imm
+  LOAD  Rd, Ra                    Rd = RAM[Ra]
+  STOR  Rs, Ra                    RAM[Ra] = Rs
+  Bcc   label | +/-disp           PC = PC + disp, relative to the branch
+  Jcc   Rt                        PC = Rt (absolute word address)
+  .equ  NAME, value               a named constant
+  .word value                     one literal data word
+  %  comment                      to end of line
+  #  comment                      also accepted (a leading '#' on an operand
+                                  is an immediate marker, not a comment)
 
-Outputs (fixed names, written to the current working directory):
-  fpga_program.bin  one binary 32-bit word per line (legacy)
-  fpga_program.hex  one 8-digit hex word per line, for $readmemh
-  fpga_program.h    C header with the program as a const array
-                    for the HPS loader (MarketStream.c)
+Pseudo-instructions
+-------------------
+  LDI   Rd, #imm                  MOV Rd, #imm  (1 word; kept as a
+                                  pseudo-instruction because "load
+                                  immediate" is what it means)
+  NOP                             BUC +1  (3 cycles, leaves the flags alone)
 
-Usage:
-  python Assembler.py trading.asm [--base 8]
+Both operand forms read the same way round: ``OP Rd, X`` computes
+``Rd = Rd OP X``, whether X is a register or an immediate.  (That was not
+true before the 2026 datapath fix - see fmma_isa for the history and for the
+run-time probe that stops a new program running on an old bitstream.)
+
+The assembler refuses to emit a condition code FSMTrial does not decode
+(GT, CS, CC, HI, LS, LO, HS, FS, FC).  Those branches assemble fine on paper
+and are then never taken, silently.
+
+Usage
+-----
+  python Assembler.py trading.asm
+  python Assembler.py market_maker.asm --base 8 --outdir . --prefix mm_program
 """
+
+from __future__ import annotations
 
 import argparse
 import re
 import sys
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Opcode table
-# ---------------------------------------------------------------------------
+import fmma_isa as isa
 
-OPCODES = {
-    # ALU (R-type and I-type forms)
-    "AND":  0x1,
-    "OR":   0x2,
-    "XOR":  0x3,
-    "ADD":  0x5,
-    "ADDU": 0x6,
-    "ADDC": 0x7,
-    "LSH":  0x8,
-    "SUB":  0x9,
-    "SUBC": 0xA,
-    "CMP":  0xB,
-    "ASH":  0xD,
-    "MUL":  0xE,
-    "MOV":  0xF,
+REGISTER_RE = re.compile(r"^R(\d+)$", re.IGNORECASE)
+LABEL_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):$")
 
-    # Memory
-    "LOAD": 0x40,
-    "STOR": 0x44,
 
-    # Branches: condition code in bits [11:8], displacement in [7:0]
-    "BEQ": 0xC0,
-    "BNE": 0xC1,
-    "BCS": 0xC2,
-    "BCC": 0xC3,
-    "BHI": 0xC4,
-    "BLS": 0xC5,
-    "BGT": 0xC6,
-    "BLE": 0xC7,
-    "BFS": 0xC8,
-    "BFC": 0xC9,
-    "BLO": 0xCA,
-    "BHS": 0xCB,
-    "BLT": 0xCC,
-    "BGE": 0xCD,
-    "BUC": 0xCE,
+class AsmError(Exception):
+    """An assembly error with a source location already formatted in."""
 
-    # Jumps: condition code in bits [11:8], target register in [3:0]
-    "JEQ": 0x40C,
-    "JCS": 0x42C,
-    "JCC": 0x43C,
-    "JHI": 0x44C,
-    "JLS": 0x45C,
-    "JGT": 0x46C,
-    "JLE": 0x47C,
-    "JFS": 0x48C,
-    "JFC": 0x49C,
-    "JLO": 0x4AC,
-    "JHS": 0x4BC,
-    "JLT": 0x4CC,
-    "JGE": 0x4DC,
-    "JUC": 0x4EC,
-}
 
-ALU_MNEMONICS = {
-    "AND", "OR", "XOR", "ADD", "ADDU", "ADDC", "LSH",
-    "SUB", "SUBC", "CMP", "ASH", "MUL", "MOV",
-}
-BRANCH_MNEMONICS = {m for m in OPCODES if m.startswith("B")}
-JUMP_MNEMONICS = {m for m in OPCODES if m.startswith("J")}
+def _err(line_no, msg):
+    raise AsmError(f"{line_no}: {msg}")
 
-REGISTER_PATTERN = re.compile(r"R(\d+)$", re.IGNORECASE)
+
+MAX_INCLUDE_DEPTH = 8
+
+
+def read_source(path, _depth=0, _stack=()):
+    """Read a source file and expand ``.include`` directives.
+
+    Returns a list of ``(location, text)`` pairs, where location is a string
+    like ``trading.asm:42`` so an error inside an include still points at the
+    file the line actually came from.
+    """
+    path = Path(path)
+    if _depth > MAX_INCLUDE_DEPTH:
+        raise AsmError(f"{path.name}: .include nested more than "
+                       f"{MAX_INCLUDE_DEPTH} deep")
+    resolved = path.resolve()
+    if resolved in _stack:
+        raise AsmError(f"{path.name}: .include cycle")
+
+    out = []
+    for line_no, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        loc = f"{path.name}:{line_no}"
+        stripped = strip_comment(raw)
+        if stripped[:8].lower() == ".include":
+            arg = stripped[8:].strip().strip('"').strip("'")
+            if not arg:
+                raise AsmError(f"{loc}: .include needs a file name")
+            target = (path.parent / arg)
+            if not target.is_file():
+                raise AsmError(f"{loc}: cannot find included file '{arg}'")
+            out.extend(read_source(target, _depth + 1, _stack + (resolved,)))
+        else:
+            out.append((loc, raw))
+    return out
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Lexing helpers
 # ---------------------------------------------------------------------------
 
-def parse_register(token):
-    """Parse a register like 'R0'..'R15' and return its number."""
-    m = REGISTER_PATTERN.match(token)
+def strip_comment(line):
+    """Remove a trailing comment.
+
+    '%' always starts a comment.  ';' does too.  '#' starts a comment only
+    when it is not attached to an operand, so '#100' stays an immediate but
+    '  # note' is dropped.
+    """
+    for i, ch in enumerate(line):
+        if ch in "%;":
+            return line[:i].strip()
+        if ch == "#":
+            # An immediate marker is preceded by ',' or whitespace and
+            # followed by a value character.
+            rest = line[i + 1:]
+            if rest[:1] and (rest[0].isalnum() or rest[0] in "+-_"):
+                continue
+            return line[:i].strip()
+    return line.strip()
+
+
+def parse_register(token, line_no):
+    m = REGISTER_RE.match(token.strip())
     if not m:
-        raise ValueError(f"Invalid register: {token}")
+        _err(line_no, f"expected a register (R0-R15), got '{token}'")
     n = int(m.group(1))
     if not (0 <= n <= 15):
-        raise ValueError(f"Register out of range (0-15): R{n}")
+        _err(line_no, f"register out of range (R0-R15): '{token}'")
     return n
 
 
 def is_register(token):
-    return REGISTER_PATTERN.match(token) is not None
+    return REGISTER_RE.match(token.strip()) is not None
 
 
-def strip_comment(line):
-    """Remove everything after '%'."""
-    return line.split("%", 1)[0].strip()
-
-
-def parse_immediate(token, labels):
-    """Parse '#123', '123', '0x7F' or a label (its absolute address)."""
+def parse_value(token, symbols, line_no):
+    """Parse '#123', '123', '0x40', '-4' or a symbol/label name."""
     tok = token.strip()
     if tok.startswith("#"):
+        tok = tok[1:].strip()
+    if tok in symbols:
+        return symbols[tok]
+    neg = False
+    if tok.startswith(("+", "-")):
+        neg = tok[0] == "-"
         tok = tok[1:]
-    if tok in labels:
-        return labels[tok]
     try:
-        return int(tok, 0)
+        v = int(tok, 0)
     except ValueError:
-        raise ValueError(f"Invalid immediate or unknown label: {token}")
+        _err(line_no, f"'{token}' is neither a number nor a known symbol")
+    return -v if neg else v
 
 
-def resolve_source_path(filename):
-    """Return the normalized absolute path of the input assembly file.
-
-    Reject '..' components up front; the file is only ever read, and
-    all generated outputs use fixed names in the current directory.
-    """
-    raw = Path(filename)
-    if ".." in raw.parts:
-        raise ValueError(f"Path traversal is not allowed: {filename}")
-    src = raw.resolve()
-    if not src.is_file():
-        raise ValueError(f"Source file not found: {filename}")
-    return src
+def split_operands(text):
+    return [t for t in re.split(r"[,\s]+", text.strip()) if t]
 
 
 # ---------------------------------------------------------------------------
-# Pass 1: labels and instruction list
+# Pass 1 - expand pseudo-instructions, collect labels and constants
 # ---------------------------------------------------------------------------
 
-def first_pass(lines):
-    """Return (labels, instruction_lines).
+class Item:
+    """One emitted word, before its operands are resolved."""
 
-    labels maps label -> program index (0 based, before the load base).
-    instruction_lines is a list of (source_line_no, text).
+    __slots__ = ("line_no", "source", "mnemonic", "operands", "index", "literal")
+
+    def __init__(self, line_no, source, mnemonic, operands, index, literal=None):
+        self.line_no = line_no
+        self.source = source
+        self.mnemonic = mnemonic
+        self.operands = operands
+        self.index = index          # program-relative word index
+        self.literal = literal      # set for .word
+
+
+def first_pass(located_lines, base):
+    """Return ``(symbols, items)``.
+
+    ``located_lines`` is a list of ``(location, text)`` pairs as produced by
+    :func:`read_source`.  ``symbols`` maps every label to its **absolute** word
+    address (base + index) and every ``.equ`` name to its value, so a label can
+    be used directly as an immediate jump target.
     """
-    labels = {}
-    instruction_lines = []
-    pc = 0
+    symbols = {}
+    items = []
+    index = 0
+    pending_labels = []
 
-    for i, raw in enumerate(lines):
+    for line_no, raw in located_lines:
         line = strip_comment(raw)
         if not line:
             continue
 
-        if line.endswith(":"):
-            label = line[:-1].strip()
-            if not label.isidentifier():
-                raise ValueError(f"Invalid label name on line {i + 1}: {label}")
-            if label in labels:
-                raise ValueError(f"Duplicate label '{label}' on line {i + 1}")
-            labels[label] = pc
+        # A label may sit alone or in front of an instruction.
+        while True:
+            m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*", line)
+            if not m:
+                break
+            name = m.group(1)
+            if name in symbols or name in pending_labels:
+                _err(line_no, f"duplicate label '{name}'")
+            pending_labels.append(name)
+            line = line[m.end():].strip()
+        if not line:
+            for name in pending_labels:
+                symbols[name] = base + index
+            pending_labels = []
+            continue
+
+        tokens = split_operands(line)
+        mnemonic = tokens[0].upper()
+        operands = tokens[1:]
+
+        if mnemonic == ".EQU":
+            if len(operands) != 2:
+                _err(line_no, ".equ takes a name and a value")
+            name = operands[0]
+            if not name.isidentifier():
+                _err(line_no, f"'{name}' is not a usable constant name")
+            if name in symbols:
+                _err(line_no, f"'{name}' is already defined")
+            symbols[name] = parse_value(operands[1], symbols, line_no)
+            continue
+
+        # Labels in front of this instruction resolve to its address.
+        for name in pending_labels:
+            symbols[name] = base + index
+        pending_labels = []
+
+        if mnemonic == ".WORD":
+            if len(operands) != 1:
+                _err(line_no, ".word takes exactly one value")
+            items.append(Item(line_no, line, ".WORD", operands, index))
+            index += 1
+            continue
+
+        if mnemonic == "LDI":
+            # Now that the I-type operand order is right, MOV Rd,#imm
+            # really does load the immediate (MOV returns its B input),
+            # so this is a single word rather than the XOR/OR pair the
+            # old datapath forced.
+            if len(operands) != 2:
+                _err(line_no, "LDI takes a register and an immediate")
+            if is_register(operands[1]):
+                _err(line_no, "LDI takes an immediate; use MOV for a register")
+            items.append(Item(line_no, line, "MOV", [operands[0], operands[1]], index))
+            index += 1
+            continue
+
+        if mnemonic == "NOP":
+            if operands:
+                _err(line_no, "NOP takes no operands")
+            items.append(Item(line_no, line, "BUC", ["1"], index))
+            index += 1
+            continue
+
+        items.append(Item(line_no, line, mnemonic, operands, index))
+        index += 1
+
+    for name in pending_labels:
+        symbols[name] = base + index      # a label at end of file
+
+    return symbols, items
+
+
+# ---------------------------------------------------------------------------
+# Pass 2 - encode
+# ---------------------------------------------------------------------------
+
+def encode_item(item, symbols, base):
+    m = item.mnemonic
+    ops = item.operands
+    ln = item.line_no
+
+    if m == ".WORD":
+        v = parse_value(ops[0], symbols, ln)
+        if not (0 <= v <= 0xFFFFFFFF):
+            _err(ln, f".word value {v} does not fit in 32 bits")
+        return v
+
+    if m in ("LOAD", "STOR"):
+        if len(ops) != 2:
+            _err(ln, f"{m} takes two registers")
+        a = parse_register(ops[0], ln)
+        b = parse_register(ops[1], ln)
+        return isa.encode_load(a, b) if m == "LOAD" else isa.encode_stor(a, b)
+
+    if m.startswith("B") and len(m) >= 2 and m != "BASE":
+        suffix = m[1:]
+        if len(ops) != 1:
+            _err(ln, f"{m} takes one branch target")
+        target = ops[0]
+        if target in symbols:
+            disp = symbols[target] - (base + item.index)
         else:
-            instruction_lines.append((i + 1, line))
-            pc += 1
-
-    return labels, instruction_lines
-
-
-# ---------------------------------------------------------------------------
-# Pass 2: encoders
-# ---------------------------------------------------------------------------
-
-def jump_instruction(tokens, opcode, line_no):
-    """Jcc Rtarget - absolute jump; the target address is read from a register."""
-    if len(tokens) != 2:
-        raise ValueError(f"Jump expects 1 register operand on line {line_no}")
-    r_target = parse_register(tokens[1])
-    return ((opcode & 0xFFF) << 4) | (r_target & 0xF)
-
-
-def branch_instruction(tokens, opcode, line_no, pc, labels):
-    """Bcc label | Bcc number.
-
-    A label assembles to a displacement relative to this instruction
-    (disp = label_index - pc). A plain number is used verbatim as the
-    displacement, which allows hand-written relative branches.
-    """
-    if len(tokens) != 2:
-        raise ValueError(f"Branch expects 1 operand on line {line_no}")
-
-    tok = tokens[1]
-    if tok in labels:
-        disp = labels[tok] - pc
-    else:
+            disp = parse_value(target, symbols, ln)
         try:
-            disp = int(tok, 0)
-        except ValueError:
-            raise ValueError(
-                f"Unknown branch target '{tok}' on line {line_no}")
+            return isa.encode_branch(suffix, disp)
+        except ValueError as e:
+            _err(ln, str(e))
 
-    if not (-128 <= disp <= 127):
-        raise ValueError(
-            f"Branch displacement {disp} out of range (-128..127) "
-            f"on line {line_no}")
-    return ((opcode & 0xFF) << 8) | (disp & 0xFF)
+    if m.startswith("J"):
+        suffix = m[1:]
+        if len(ops) != 1:
+            _err(ln, f"{m} takes one register holding the target address")
+        rt = parse_register(ops[0], ln)
+        try:
+            return isa.encode_jump(suffix, rt)
+        except ValueError as e:
+            _err(ln, str(e))
 
+    if m in isa.ALU_OPCODES:
+        if len(ops) != 2:
+            _err(ln, f"{m} takes a destination and a source")
+        rd = parse_register(ops[0], ln)
+        if is_register(ops[1]):
+            return isa.encode_rtype(m, rd, parse_register(ops[1], ln))
+        imm = parse_value(ops[1], symbols, ln)
+        if imm < 0:
+            _err(ln, f"negative immediate {imm}: the I-type field is unsigned. "
+                     f"Build the value with LDI and use an R-type SUB instead.")
+        try:
+            return isa.encode_itype(m, rd, imm)
+        except ValueError as e:
+            _err(ln, str(e))
 
-def load_instruction(tokens, opcode, line_no):
-    """LOAD Rd, Ra -> Rd = RAM[Ra]."""
-    if len(tokens) != 3:
-        raise ValueError(f"LOAD expects 2 operands on line {line_no}")
-    rd = parse_register(tokens[1])
-    ra = parse_register(tokens[2])
-    return (((opcode >> 4) & 0xF) << 12) | (rd << 8) | ((opcode & 0xF) << 4) | ra
-
-
-def store_instruction(tokens, opcode, line_no):
-    """STOR Rs, Ra -> RAM[Ra] = Rs."""
-    if len(tokens) != 3:
-        raise ValueError(f"STOR expects 2 operands on line {line_no}")
-    rs = parse_register(tokens[1])
-    ra = parse_register(tokens[2])
-    return (((opcode >> 4) & 0xF) << 12) | (rs << 8) | ((opcode & 0xF) << 4) | ra
-
-
-def alu_instruction(tokens, opcode, line_no, labels):
-    """OP Rd, Rs (R-type) or OP Rd, #imm (I-type, 24-bit immediate)."""
-    if len(tokens) != 3:
-        raise ValueError(f"ALU op expects 2 operands on line {line_no}")
-    rd = parse_register(tokens[1])
-
-    if is_register(tokens[2]):
-        rs = parse_register(tokens[2])
-        return (rd << 8) | (opcode << 4) | rs
-
-    imm = parse_immediate(tokens[2], labels)
-    if not (0 <= imm <= 0xFFFFFF):
-        raise ValueError(
-            f"Immediate {imm} out of range (0..0xFFFFFF) on line {line_no}")
-    upper_imm = (imm >> 8) & 0xFFFF
-    lower_imm = imm & 0xFF
-    return (upper_imm << 16) | (opcode << 12) | (rd << 8) | lower_imm
+    _err(ln, f"unknown instruction '{m}'")
 
 
-def assemble_instruction(line_no, line, pc, labels):
-    """Convert one instruction to its 32-bit machine word."""
-    tokens = [t for t in re.split(r"[,\s]+", line.strip()) if t]
-    if not tokens:
-        return None
+def assemble_file(src_path, base=8):
+    """Assemble ``src_path`` (expanding .include).
 
-    mnemonic = tokens[0].upper()
-    if mnemonic not in OPCODES:
-        raise ValueError(f"Unknown instruction '{mnemonic}' on line {line_no}")
-    opcode = OPCODES[mnemonic]
-
-    if mnemonic == "LOAD":
-        return load_instruction(tokens, opcode, line_no)
-    if mnemonic == "STOR":
-        return store_instruction(tokens, opcode, line_no)
-    if mnemonic in BRANCH_MNEMONICS:
-        return branch_instruction(tokens, opcode, line_no, pc, labels)
-    if mnemonic in JUMP_MNEMONICS:
-        return jump_instruction(tokens, opcode, line_no)
-    if mnemonic in ALU_MNEMONICS:
-        return alu_instruction(tokens, opcode, line_no, labels)
-
-    raise ValueError(f"Unhandled mnemonic '{mnemonic}' on line {line_no}")
+    Returns ``(symbols, machine_code, items)``.
+    """
+    return _assemble(read_source(src_path), base)
 
 
-def assemble_file(src_path, base):
-    with open(src_path, "r") as f:
-        lines = f.readlines()
+def assemble_lines(lines, base=8):
+    """Assemble a list of plain source lines (used by the tests)."""
+    located = [(f"line {n}", text) for n, text in enumerate(lines, 1)]
+    return _assemble(located, base)
 
-    labels, instruction_lines = first_pass(lines)
 
-    # Labels resolve to absolute word addresses (base + index), so they
-    # can be used directly as immediate jump targets; branch displacements
-    # subtract the instruction's own absolute address.
-    abs_labels = {name: idx + base for name, idx in labels.items()}
+def _assemble(located_lines, base):
+    symbols, items = first_pass(located_lines, base)
+    code = [encode_item(it, symbols, base) for it in items]
 
-    machine_code = []
-    for idx, (line_no, text) in enumerate(instruction_lines):
-        instr = assemble_instruction(line_no, text, idx + base, abs_labels)
-        if instr is not None:
-            machine_code.append(instr)
-
-    return labels, machine_code
+    for it, word in zip(items, code):
+        if word == 0:
+            _err(it.line_no,
+                 "this instruction encodes to 0x00000000, which the hardware "
+                 "treats as HALT (the CPU would park here waiting for the word "
+                 "to change)")
+    return symbols, code, items
 
 
 # ---------------------------------------------------------------------------
-# Output writers - fixed literal names in the current working directory,
-# never derived from the input path.
+# Output writers
 # ---------------------------------------------------------------------------
 
-def write_outputs(base, code):
-    bin_text = "\n".join(f"{instr:032b}" for instr in code) + "\n"
-    hex_text = "\n".join(f"{instr:08x}" for instr in code) + "\n"
+def _write(path, text):
+    """Write a generated file with LF line endings on every platform.
 
-    h_text_lines = [
-        "// Auto-generated by Assembler.py from trading.asm. Do not edit.",
+    Without an explicit newline argument Python translates line endings
+    to CRLF on Windows, so the same assembler run produces different
+    bytes on the development PC and on the board. `make check-generated`
+    then fails on line endings instead of on the thing it exists to
+    catch, which is a hand-edited generated file.
+    """
+    Path(path).write_text(text, encoding="ascii", newline="\n")
+
+
+def write_outputs(outdir, prefix, base, code, items, symbols, mem_words=isa.MEM_WORDS):
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    _write(outdir / f"{prefix}.bin", "".join(f"{w:032b}\n" for w in code))
+    _write(outdir / f"{prefix}.hex", "".join(f"{w:08x}\n" for w in code))
+
+    h = [
+        f"// Auto-generated by Assembler.py. Do not edit.",
+        f"// Source program: {len(code)} words loaded at word address {base}.",
         "#ifndef FPGA_PROGRAM_H",
         "#define FPGA_PROGRAM_H",
         "",
         f"#define FPGA_PROGRAM_BASE {base}u",
         f"#define FPGA_PROGRAM_LEN  {len(code)}u",
         "",
-        "static const unsigned int fpga_program[FPGA_PROGRAM_LEN] = {",
+        f"static const unsigned int fpga_program[FPGA_PROGRAM_LEN] = {{",
     ]
-    for i, instr in enumerate(code):
+    for i, w in enumerate(code):
         comma = "," if i + 1 < len(code) else ""
-        h_text_lines.append(f"    0x{instr:08X}u{comma}   // word {base + i}")
-    h_text_lines += ["};", "", "#endif", ""]
-    h_text = "\n".join(h_text_lines)
+        h.append(f"    0x{w:08X}u{comma}   /* word {base + i} */")
+    h += ["};", "", "#endif /* FPGA_PROGRAM_H */", ""]
+    _write(outdir / f"{prefix}.h", "\n".join(h))
 
-    Path("fpga_program.bin").write_text(bin_text, encoding="ascii")
-    Path("fpga_program.hex").write_text(hex_text, encoding="ascii")
-    Path("fpga_program.h").write_text(h_text, encoding="ascii")
+    # Quartus MIF: the whole 1024-word RAM, program in place, everything else
+    # zero.  Zero matters - a zero word is the CPU's halt instruction, so the
+    # unused RAM must not contain junk.
+    mif = [
+        f"-- Auto-generated by Assembler.py. Do not edit.",
+        f"-- On-chip RAM image: {len(code)} program words at word {base}.",
+        f"DEPTH = {mem_words};",
+        "WIDTH = 32;",
+        "ADDRESS_RADIX = DEC;",
+        "DATA_RADIX = HEX;",
+        "CONTENT",
+        "BEGIN",
+    ]
+    end = base + len(code)
+    if base > 0:
+        mif.append(f"    [0..{base - 1}] : 00000000;")
+    for i, w in enumerate(code):
+        mif.append(f"    {base + i} : {w:08X};")
+    if end < mem_words:
+        mif.append(f"    [{end}..{mem_words - 1}] : 00000000;")
+    mif += ["END;", ""]
+    _write(outdir / f"{prefix}.mif", "\n".join(mif))
+
+    lst = [
+        f"FMMA assembler listing - {len(code)} words at base {base}",
+        "",
+        "Symbols:",
+    ]
+    for name, value in sorted(symbols.items(), key=lambda kv: kv[1]):
+        lst.append(f"    {name:<20} = {value}")
+    lst += ["", "Code:", ""]
+    for it, w in zip(items, code):
+        d = isa.decode(w)
+        lst.append(f"  {base + it.index:4d}  0x{w:08X}  {d.text:<28}  ; {it.source}")
+    lst.append("")
+    _write(outdir / f"{prefix}.lst", "\n".join(lst))
 
 
-def main():
-    parser = argparse.ArgumentParser(description="FMMA CPU assembler")
-    parser.add_argument("filename", help="assembly source, e.g. trading.asm")
-    parser.add_argument("--base", type=int, default=8,
-                        help="word address the program is loaded at "
-                             "(default 8)")
-    args = parser.parse_args()
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def resolve_source_path(filename):
+    raw = Path(filename)
+    if ".." in raw.parts:
+        raise AsmError(f"path traversal is not allowed: {filename}")
+    src = raw.resolve()
+    if not src.is_file():
+        raise AsmError(f"source file not found: {filename}")
+    return src
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description="FMMA CPU assembler")
+    p.add_argument("filename", help="assembly source, e.g. trading.asm")
+    p.add_argument("--base", type=int, default=8,
+                   help="word address the program is loaded at (default 8)")
+    p.add_argument("--outdir", default=".", help="output directory (default .)")
+    p.add_argument("--prefix", default="fpga_program",
+                   help="output file stem (default fpga_program)")
+    p.add_argument("--quiet", action="store_true")
+    args = p.parse_args(argv)
 
     try:
         src = resolve_source_path(args.filename)
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+        symbols, code, items = assemble_file(src, args.base)
+    except AsmError as e:
+        print(f"{args.filename}: error: {e}", file=sys.stderr)
+        return 1
 
-    labels, code = assemble_file(src, args.base)
+    if args.base + len(code) > isa.MEM_WORDS:
+        print(f"error: program does not fit: {len(code)} words at base "
+              f"{args.base} exceeds the {isa.MEM_WORDS}-word RAM", file=sys.stderr)
+        return 1
 
-    print("Labels (absolute word addresses):")
-    for name, idx in labels.items():
-        print(f"  {name}: {args.base + idx}")
+    write_outputs(args.outdir, args.prefix, args.base, code, items, symbols)
 
-    print("\nListing:")
-    for i, instr in enumerate(code):
-        print(f"  {args.base + i:4d}: 0x{instr:08X}  {instr:032b}")
-
-    if any(w == 0 for w in code):
-        print("\nERROR: program contains a 32'b0 word - that opcode "
-              "parks the CPU in its halt state!")
-        sys.exit(1)
-
-    write_outputs(args.base, code)
-    print(f"\nWrote fpga_program.bin / .hex / .h to the current directory "
-          f"(base address {args.base}, {len(code)} words)")
+    if not args.quiet:
+        print(f"Symbols ({len(symbols)}):")
+        for name, value in sorted(symbols.items(), key=lambda kv: kv[1]):
+            print(f"  {name:<20} = {value}")
+        print("\nListing:")
+        for it, w in zip(items, code):
+            print(f"  {args.base + it.index:4d}: 0x{w:08X}  "
+                  f"{isa.decode(w).text:<28}  ; {it.source}")
+        print(f"\nWrote {args.prefix}.hex/.bin/.h/.mif/.lst to {args.outdir} "
+              f"({len(code)} words at base {args.base})")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
