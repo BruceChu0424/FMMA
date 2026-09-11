@@ -37,6 +37,30 @@ software at all.
 
 ## 15.2 The FPGA will not configure
 
+### `Invalid MSEL setting` followed by `fpgamgr: timeout`
+
+This is the one that wastes an afternoon, because it looks like a bad
+bitstream and is not.
+
+`MSEL[4:0]` is strapped by `SW10` and decides how the FPGA is
+configured. A DE1-SoC ships set to **Active Serial** (`10010`), where
+the FPGA loads itself from the on-board EPCQ flash and the HPS cannot
+configure it at all. In that mode *every* bitstream fails this way,
+including the board's own `soc_system.rbf`.
+
+Read the strap:
+
+```bash
+gcc -O2 -o msel tools/msel.c && ./msel        # on the board
+python tools/deploy.py status                 # or from the PC
+```
+
+Fix: set `SW10` to `01010` (FPPx16) — from the default that is switches
+4 OFF and 5 ON — and power-cycle. [11](11-board-bringup.md) §11.4 has
+the table. Or use JTAG, which works in any mode.
+
+### Everything else
+
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | Programmer sees no device | Wrong USB port, or no driver | Use the **blue USB Blaster** port, not the UART one. Install the USB-Blaster II driver from `quartus/drivers`. |

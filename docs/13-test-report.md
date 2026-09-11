@@ -14,7 +14,8 @@ source in the same revision.
 
 | Stage | Result |
 |-------|--------|
-| Python: ISA, assembler, simulator | **82 / 82 pass** |
+| C: fixed point, JSON, strategy, P&L | **63 / 63 checks pass** |
+| Python: ISA, assembler, simulator, both strategies | **96 / 96 pass** |
 | RTL: ALU equivalence vs the golden model | **9,548 / 9,548 vectors pass** |
 | RTL: full chain against the protocol | **31 / 31 assertions pass** |
 | RTL: latency budget | **3 / 3 within budget** |
@@ -30,7 +31,7 @@ quartus_sh --flow compile HFTTop
 ```
 
 `Quartus Prime Full Compilation was successful. 0 errors, 433 warnings`
-— 48 minutes 29 seconds, 47 of them in the fitter.
+— about 48 minutes, almost all of it in the fitter.
 
 ### Resource usage
 
@@ -38,8 +39,8 @@ From `output_files/HFTTop.fit.summary`:
 
 | Resource | Used | Available | % |
 |----------|-----:|----------:|--:|
-| Logic (ALMs) | 1,200 | 32,070 | 4 % |
-| Registers | 1,130 | — | — |
+| Logic (ALMs) | 1,201 | 32,070 | 4 % |
+| Registers | 1,133 | — | — |
 | Pins | 46 | 457 | 10 % |
 | Block memory | 32,768 bits | 4,065,280 | < 1 % |
 | M10K blocks | 4 | 397 | 1 % |
@@ -51,12 +52,16 @@ Almost all of this is the HPS hard IP and its DDR3 interface; the CPU
 itself is a small part of it. The four M10K blocks are the 4 KB shared RAM
 and the two DSPs are the ALU's multiplier.
 
-Logic usage **fell** from 1,652 ALMs (5 %) in the previous build to 1,200
+Logic usage **fell** from 1,652 ALMs (5 %) in the inherited design to 1,201
 (4 %). The saving comes from the shift instructions: the old `LSH`/`ASH`
 were written as unrolled loops that synthesised into two cascaded shifters,
 and replacing them with a single signed-amount barrel shifter removed the
 second one — while also making them produce the right answer
 ([CHANGELOG](../CHANGELOG.md)).
+
+Splitting the top level into `cpu_core` and `reset_ctrl` cost exactly one
+ALM (1,200 → 1,201), which is the expected result for a pure refactor and
+is the cheapest available confirmation that it was one.
 
 ### Timing
 
@@ -64,19 +69,16 @@ From `output_files/HFTTop.sta.summary`, slow 1100 mV 85 °C corner:
 
 | Check | Slack | TNS |
 |-------|------:|----:|
-| Setup `clk50` | **+2.505 ns** | 0.000 |
-| Hold `clk50` | **+0.245 ns** | 0.000 |
-| Recovery `clk50` | +16.195 ns | 0.000 |
-| Removal `clk50` | +0.867 ns | 0.000 |
-| Minimum pulse width `clk50` | +8.898 ns | 0.000 |
+| Setup `clk50` | **+2.401 ns** | 0.000 |
+| Hold `clk50` | **+0.239 ns** | 0.000 |
+| Setup `clk50`, 0 °C corner | +2.482 ns | 0.000 |
+| Hold `clk50`, 0 °C corner | +0.227 ns | 0.000 |
 | Setup, HPS SDRAM write clock | +2.563 ns | 0.000 |
 | Hold, HPS SDRAM write clock | +0.143 ns | 0.000 |
 
-All corners met with no failing paths. The setup slack of 2.505 ns on a
-20 ns period means the critical path is 17.5 ns; the design would close at
+All corners met with no failing paths. The setup slack of 2.401 ns on a
+20 ns period means the critical path is 17.6 ns; the design would close at
 roughly 57 MHz.
-
-The slow 1100 mV **0 °C** corner is also met (+2.543 setup, +0.232 hold).
 
 ### Warnings
 
@@ -111,7 +113,7 @@ Testbenches/run_sim.sh
    PASS generated sources are current
 
 == Python: ISA, assembler, simulator, strategy ==
-   Ran 82 tests in 0.877s
+   Ran 96 tests in 1.4s
    OK
    PASS python unit tests
 
@@ -198,10 +200,42 @@ the class of bug the check exists for.
 
 ## 13.5 On the board
 
-**Not yet run.** This is the only outstanding item in the project
-([16](16-project-plan.md) §16.5). [11-board-bringup](11-board-bringup.md) is
-the procedure; §11.8 lists the six output lines that constitute the checks,
-and §11.12 is the per-session checklist.
+**Partially run.** The board was brought up far enough to establish the
+environment and to find two things that matter:
+
+| Finding | Consequence |
+|---------|-------------|
+| The image is kernel 3.13 with **gcc 4.6.3** and no OpenSSL headers | the build uses `-std=gnu99`; `make static` exists for boards that cannot install `libssl-dev` |
+| `/dev/fpga0` and the three FPGA bridges are present | the FPGA can be configured from Linux, with no JTAG cable |
+| Ethernet, DHCP and DNS to the exchange all work | the live feed is reachable from the board |
+| **`MSEL[4:0] = 10010` (Active Serial)** | the HPS cannot configure the FPGA at all until `SW10` is changed; see §11.4 |
+
+The MSEL strap is what blocked the rest. In Active Serial mode the FPGA
+loads itself from the on-board EPCQ flash and the FPGA manager refuses
+every bitstream — including the board's own `soc_system.rbf` — with
+`Invalid MSEL setting` followed by a timeout. It looks exactly like a
+bad bitstream and is not.
+
+It also produced the project's one hardware incident: a configuration
+that had silently failed left the fabric unconfigured, and the next read
+of the bridge hung the board hard enough to need a power cycle. That is
+now impossible by construction — every path checks the fabric state
+first — and it is written up in [11](11-board-bringup.md) and
+[15](15-troubleshooting.md) §15.2.
+
+Record here once `SW10` is set to `01010` and the run completes:
+
+| Check | Result |
+|-------|--------|
+| `MSEL` reads `01010` | |
+| `deploy.py fpga` reports `user mode`, no timeout | |
+| `HEX0` steady `8` after configuration | |
+| `fmma-probe ramtest` PASS | |
+| `CPU running: protocol v2` | |
+| `[FEED] connected` | |
+| `>>> FPGA BUY/SELL` with a latency figure | |
+| Alpaca accepts the order; position agrees with the dashboard | |
+| `--bench` output (software vs fabric) | |
 
 Record here, when it is done:
 

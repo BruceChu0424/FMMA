@@ -49,8 +49,10 @@ python -m pip install pyserial
 ## 11.1 SD card
 
 Use a prebuilt Cyclone V / DE1-SoC Linux image. Write it with
-`balenaEtcher` or `dd`. Set the MSEL switches for configuration from
-the HPS (the default on a DE1-SoC).
+`balenaEtcher` or `dd`.
+
+The MSEL switches also matter, and the factory default is **not** what
+you want if you intend to program the FPGA from Linux — see §11.4.
 
 > **Do not build a preloader from this repository's
 > `hps_isw_handoff/`.** The HPS SDRAM parameters in the Qsys system are
@@ -120,6 +122,51 @@ hang with no data.
 
 Two ways. The HPS route needs no extra hardware and is what
 `deploy.py` uses.
+
+### First: check MSEL
+
+**The HPS can only configure the FPGA in a Fast Passive Parallel mode.**
+The board's `SW10` DIP switch sets `MSEL[4:0]`, and a DE1-SoC ships
+strapped for **Active Serial** (`MSEL = 10010`), where the FPGA loads
+itself from the on-board EPCQ flash at power-up and the HPS is locked
+out entirely.
+
+In AS mode every attempt looks like this, for *any* bitstream including
+the board's own:
+
+```
+altera_fpga_manager ff706000.fpgamgr: Invalid MSEL setting
+altera_fpga_manager ff706000.fpgamgr: timeout
+```
+
+which is easy to misread as "my bitstream is bad". It is not; nothing
+can be loaded this way until the straps change.
+
+```bash
+python tools/deploy.py fpga      # reads MSEL first and explains if it is wrong
+```
+
+To enable HPS configuration, set `SW10` to `MSEL = 01010` (FPPx16).
+Switch 1 is MSEL0 and **ON = 0**:
+
+| Switch | Signal | Want | Position |
+|--------|--------|-----:|----------|
+| SW10.1 | MSEL0 | 0 | **ON** |
+| SW10.2 | MSEL1 | 1 | **OFF** |
+| SW10.3 | MSEL2 | 0 | **ON** |
+| SW10.4 | MSEL3 | 1 | **OFF** |
+| SW10.5 | MSEL4 | 0 | **ON** |
+
+From the factory default (`10010`) only switches 4 and 5 move. Then
+power-cycle the board. Verify with `tools/msel.c`, which reads the
+strap straight out of the FPGA manager's status register:
+
+```bash
+python tools/deploy.py status
+```
+
+If you would rather not touch the switches, use JTAG instead — it works
+in any MSEL mode.
 
 ### From Linux, over the network (no JTAG needed)
 

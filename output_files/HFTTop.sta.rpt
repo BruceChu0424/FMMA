@@ -1,5 +1,5 @@
 Timing Analyzer report for HFTTop
-Fri Sep 11 14:36:25 2026
+Fri Sep 11 15:52:52 2026
 Quartus Prime Version 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
 
 
@@ -615,26 +615,26 @@ on the Quartus Prime software download page.
 ; Number detected on machine ; 22          ;
 ; Maximum allowed            ; 16          ;
 ;                            ;             ;
-; Average used               ; 1.47        ;
+; Average used               ; 1.53        ;
 ; Maximum used               ; 16          ;
 ;                            ;             ;
 ; Usage by Processor         ; % Time Used ;
 ;     Processor 1            ; 100.0%      ;
-;     Processor 2            ;   4.0%      ;
-;     Processor 3            ;   3.9%      ;
-;     Processor 4            ;   3.8%      ;
-;     Processor 5            ;   3.0%      ;
-;     Processor 6            ;   3.0%      ;
-;     Processor 7            ;   3.0%      ;
-;     Processor 8            ;   3.0%      ;
-;     Processor 9            ;   3.0%      ;
-;     Processor 10           ;   2.9%      ;
-;     Processor 11           ;   2.9%      ;
-;     Processor 12           ;   2.9%      ;
-;     Processor 13           ;   2.9%      ;
-;     Processor 14           ;   2.9%      ;
-;     Processor 15           ;   2.9%      ;
-;     Processor 16           ;   2.9%      ;
+;     Processor 2            ;   4.6%      ;
+;     Processor 3            ;   4.4%      ;
+;     Processor 4            ;   4.3%      ;
+;     Processor 5            ;   3.4%      ;
+;     Processor 6            ;   3.4%      ;
+;     Processor 7            ;   3.4%      ;
+;     Processor 8            ;   3.3%      ;
+;     Processor 9            ;   3.3%      ;
+;     Processor 10           ;   3.3%      ;
+;     Processor 11           ;   3.3%      ;
+;     Processor 12           ;   3.3%      ;
+;     Processor 13           ;   3.3%      ;
+;     Processor 14           ;   3.3%      ;
+;     Processor 15           ;   3.3%      ;
+;     Processor 16           ;   3.3%      ;
 +----------------------------+-------------+
 
 
@@ -643,10 +643,10 @@ on the Quartus Prime software download page.
 +---------------------------------------------------------------------------+--------+--------------------------+
 ; SDC File Path                                                             ; Status ; Read at                  ;
 +---------------------------------------------------------------------------+--------+--------------------------+
-; Software/HPSfgpa2/synthesis/submodules/altera_reset_controller.sdc        ; OK     ; Fri Sep 11 14:35:55 2026 ;
-; Software/HPSfgpa2/synthesis/submodules/hps_sdram_p0.sdc                   ; OK     ; Fri Sep 11 14:35:55 2026 ;
-; Software/HPSfgpa2/synthesis/submodules/HPSfgpa2_hps_0_fpga_interfaces.sdc ; OK     ; Fri Sep 11 14:35:56 2026 ;
-; HFTTop.sdc                                                                ; OK     ; Fri Sep 11 14:35:56 2026 ;
+; Software/HPSfgpa2/synthesis/submodules/altera_reset_controller.sdc        ; OK     ; Fri Sep 11 15:52:17 2026 ;
+; Software/HPSfgpa2/synthesis/submodules/hps_sdram_p0.sdc                   ; OK     ; Fri Sep 11 15:52:18 2026 ;
+; Software/HPSfgpa2/synthesis/submodules/HPSfgpa2_hps_0_fpga_interfaces.sdc ; OK     ; Fri Sep 11 15:52:18 2026 ;
+; HFTTop.sdc                                                                ; OK     ; Fri Sep 11 15:52:18 2026 ;
 +---------------------------------------------------------------------------+--------+--------------------------+
 
 
@@ -672,7 +672,7 @@ on the Quartus Prime software download page.
 +-------------+-----------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------+
 ; Fmax        ; Restricted Fmax ; Clock Name                                                                                                                                                     ; Note                                           ;
 +-------------+-----------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------+
-; 66.06 MHz   ; 66.06 MHz       ; clk50                                                                                                                                                          ;                                                ;
+; 64.22 MHz   ; 64.22 MHz       ; clk50                                                                                                                                                          ;                                                ;
 ; 1184.83 MHz ; 717.36 MHz      ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; limit due to minimum period restriction (tmin) ;
 +-------------+-----------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------+
 This panel reports FMAX for every clock in the design, regardless of the user-specified clock periods.  FMAX is only computed for paths where the source and destination registers or ports are driven by the same clock.  Paths of different clocks, including generated clocks, are ignored.  For paths between a clock and its inversion, FMAX is computed as if the rising and falling edges are scaled along with FMAX, such that the duty cycle (in terms of a percentage) is maintained. Altera recommends that you always use clock constraints and other slack reports for sign-off analysis.
@@ -689,7 +689,7 @@ HTML report is unavailable in plain text report export.
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
-; clk50                                                                                                                                                          ; 2.505 ; 0.000         ;
+; clk50                                                                                                                                                          ; 2.401 ; 0.000         ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 2.563 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
@@ -700,7 +700,7 @@ HTML report is unavailable in plain text report export.
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 0.143 ; 0.000         ;
-; clk50                                                                                                                                                          ; 0.245 ; 0.000         ;
+; clk50                                                                                                                                                          ; 0.239 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
 
@@ -710,7 +710,7 @@ HTML report is unavailable in plain text report export.
 ; Clock                                                                                                                                                          ; Slack  ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 5.041  ; 0.000         ;
-; clk50                                                                                                                                                          ; 16.195 ; 0.000         ;
+; clk50                                                                                                                                                          ; 15.151 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+---------------+
 
 
@@ -719,7 +719,7 @@ HTML report is unavailable in plain text report export.
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
-; clk50                                                                                                                                                          ; 0.867 ; 0.000         ;
+; clk50                                                                                                                                                          ; 0.944 ; 0.000         ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 1.063 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
@@ -731,7 +731,7 @@ HTML report is unavailable in plain text report export.
 +-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk ; 1.025 ; 0.000         ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk          ; 1.039 ; 0.000         ;
-; clk50                                                                                                                                                                   ; 8.898 ; 0.000         ;
+; clk50                                                                                                                                                                   ; 8.901 ; 0.000         ;
 +-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
 
@@ -742,7 +742,7 @@ The design MTBF is not calculated because there are no specified synchronizers i
 Number of Synchronizer Chains Found: 3
 Shortest Synchronizer Chain: 2 Registers
 Fraction of Chains for which MTBFs Could Not be Calculated: 1.000
-Worst Case Available Settling Time: 22.359 ns
+Worst Case Available Settling Time: 19.517 ns
 
 
 
@@ -10449,7 +10449,7 @@ HTML report is unavailable in plain text report export.
 +-------------+-----------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------+
 ; Fmax        ; Restricted Fmax ; Clock Name                                                                                                                                                     ; Note                                           ;
 +-------------+-----------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------+
-; 66.56 MHz   ; 66.56 MHz       ; clk50                                                                                                                                                          ;                                                ;
+; 65.21 MHz   ; 65.21 MHz       ; clk50                                                                                                                                                          ;                                                ;
 ; 1237.62 MHz ; 717.36 MHz      ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; limit due to minimum period restriction (tmin) ;
 +-------------+-----------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------+
 This panel reports FMAX for every clock in the design, regardless of the user-specified clock periods.  FMAX is only computed for paths where the source and destination registers or ports are driven by the same clock.  Paths of different clocks, including generated clocks, are ignored.  For paths between a clock and its inversion, FMAX is computed as if the rising and falling edges are scaled along with FMAX, such that the duty cycle (in terms of a percentage) is maintained. Altera recommends that you always use clock constraints and other slack reports for sign-off analysis.
@@ -10460,7 +10460,7 @@ This panel reports FMAX for every clock in the design, regardless of the user-sp
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
-; clk50                                                                                                                                                          ; 2.543 ; 0.000         ;
+; clk50                                                                                                                                                          ; 2.482 ; 0.000         ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 2.560 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
@@ -10471,7 +10471,7 @@ This panel reports FMAX for every clock in the design, regardless of the user-sp
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 0.162 ; 0.000         ;
-; clk50                                                                                                                                                          ; 0.232 ; 0.000         ;
+; clk50                                                                                                                                                          ; 0.227 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
 
@@ -10481,7 +10481,7 @@ This panel reports FMAX for every clock in the design, regardless of the user-sp
 ; Clock                                                                                                                                                          ; Slack  ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 5.134  ; 0.000         ;
-; clk50                                                                                                                                                          ; 16.385 ; 0.000         ;
+; clk50                                                                                                                                                          ; 15.375 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+---------------+
 
 
@@ -10490,7 +10490,7 @@ This panel reports FMAX for every clock in the design, regardless of the user-sp
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
-; clk50                                                                                                                                                          ; 0.813 ; 0.000         ;
+; clk50                                                                                                                                                          ; 0.849 ; 0.000         ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 1.012 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
@@ -10502,7 +10502,7 @@ This panel reports FMAX for every clock in the design, regardless of the user-sp
 +-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk ; 1.030 ; 0.000         ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk          ; 1.046 ; 0.000         ;
-; clk50                                                                                                                                                                   ; 8.925 ; 0.000         ;
+; clk50                                                                                                                                                                   ; 8.932 ; 0.000         ;
 +-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
 
@@ -10513,7 +10513,7 @@ The design MTBF is not calculated because there are no specified synchronizers i
 Number of Synchronizer Chains Found: 3
 Shortest Synchronizer Chain: 2 Registers
 Fraction of Chains for which MTBFs Could Not be Calculated: 1.000
-Worst Case Available Settling Time: 22.626 ns
+Worst Case Available Settling Time: 19.962 ns
 
 
 
@@ -20221,7 +20221,7 @@ HTML report is unavailable in plain text report export.
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 2.943 ; 0.000         ;
-; clk50                                                                                                                                                          ; 5.232 ; 0.000         ;
+; clk50                                                                                                                                                          ; 5.146 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
 
@@ -20231,7 +20231,7 @@ HTML report is unavailable in plain text report export.
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 0.084 ; 0.000         ;
-; clk50                                                                                                                                                          ; 0.148 ; 0.000         ;
+; clk50                                                                                                                                                          ; 0.140 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
 
@@ -20241,7 +20241,7 @@ HTML report is unavailable in plain text report export.
 ; Clock                                                                                                                                                          ; Slack  ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 5.393  ; 0.000         ;
-; clk50                                                                                                                                                          ; 17.298 ; 0.000         ;
+; clk50                                                                                                                                                          ; 16.589 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+---------------+
 
 
@@ -20250,7 +20250,7 @@ HTML report is unavailable in plain text report export.
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
-; clk50                                                                                                                                                          ; 0.489 ; 0.000         ;
+; clk50                                                                                                                                                          ; 0.591 ; 0.000         ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 0.984 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
@@ -20273,7 +20273,7 @@ The design MTBF is not calculated because there are no specified synchronizers i
 Number of Synchronizer Chains Found: 3
 Shortest Synchronizer Chain: 2 Registers
 Fraction of Chains for which MTBFs Could Not be Calculated: 1.000
-Worst Case Available Settling Time: 25.453 ns
+Worst Case Available Settling Time: 23.240 ns
 
 
 
@@ -29981,7 +29981,7 @@ HTML report is unavailable in plain text report export.
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 2.943 ; 0.000         ;
-; clk50                                                                                                                                                          ; 5.681 ; 0.000         ;
+; clk50                                                                                                                                                          ; 5.653 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
 
@@ -29991,7 +29991,7 @@ HTML report is unavailable in plain text report export.
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 0.077 ; 0.000         ;
-; clk50                                                                                                                                                          ; 0.134 ; 0.000         ;
+; clk50                                                                                                                                                          ; 0.128 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
 
@@ -30001,7 +30001,7 @@ HTML report is unavailable in plain text report export.
 ; Clock                                                                                                                                                          ; Slack  ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 5.491  ; 0.000         ;
-; clk50                                                                                                                                                          ; 17.642 ; 0.000         ;
+; clk50                                                                                                                                                          ; 17.007 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+--------+---------------+
 
 
@@ -30010,7 +30010,7 @@ HTML report is unavailable in plain text report export.
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; Clock                                                                                                                                                          ; Slack ; End Point TNS ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
-; clk50                                                                                                                                                          ; 0.443 ; 0.000         ;
+; clk50                                                                                                                                                          ; 0.507 ; 0.000         ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk ; 0.889 ; 0.000         ;
 +----------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
@@ -30022,7 +30022,7 @@ HTML report is unavailable in plain text report export.
 +-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk ; 1.304 ; 0.000         ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk          ; 1.311 ; 0.000         ;
-; clk50                                                                                                                                                                   ; 8.441 ; 0.000         ;
+; clk50                                                                                                                                                                   ; 8.442 ; 0.000         ;
 +-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+---------------+
 
 
@@ -30033,7 +30033,7 @@ The design MTBF is not calculated because there are no specified synchronizers i
 Number of Synchronizer Chains Found: 3
 Shortest Synchronizer Chain: 2 Registers
 Fraction of Chains for which MTBFs Could Not be Calculated: 1.000
-Worst Case Available Settling Time: 26.034 ns
+Worst Case Available Settling Time: 24.155 ns
 
 
 
@@ -39740,10 +39740,10 @@ HTML report is unavailable in plain text report export.
 +--------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+-------+----------+---------+---------------------+
 ; Clock                                                                                                                                                                    ; Setup ; Hold  ; Recovery ; Removal ; Minimum Pulse Width ;
 +--------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------+-------+----------+---------+---------------------+
-; Worst-case Slack                                                                                                                                                         ; 2.505 ; 0.077 ; 5.041    ; 0.443   ; 1.025               ;
+; Worst-case Slack                                                                                                                                                         ; 2.401 ; 0.077 ; 5.041    ; 0.507   ; 1.025               ;
 ;  HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk          ; 2.560 ; 0.077 ; 5.041    ; 0.889   ; 1.039               ;
 ;  HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk ; N/A   ; N/A   ; N/A      ; N/A     ; 1.025               ;
-;  clk50                                                                                                                                                                   ; 2.505 ; 0.134 ; 16.195   ; 0.443   ; 8.441               ;
+;  clk50                                                                                                                                                                   ; 2.401 ; 0.128 ; 15.151   ; 0.507   ; 8.442               ;
 ; Design-wide TNS                                                                                                                                                          ; 0.0   ; 0.0   ; 0.0      ; 0.0     ; 0.0                 ;
 ;  HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk          ; 0.000 ; 0.000 ; 0.000    ; 0.000   ; 0.000               ;
 ;  HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk ; N/A   ; N/A   ; N/A      ; N/A     ; 0.000               ;
@@ -40032,7 +40032,7 @@ HTML report is unavailable in plain text report export.
 +-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------+----------+----------+----------+
 ; From Clock                                                                                                                                                              ; To Clock                                                                                                                                                                ; RR Paths ; FR Paths ; RF Paths ; FF Paths ;
 +-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------+----------+----------+----------+
-; clk50                                                                                                                                                                   ; clk50                                                                                                                                                                   ; 18807    ; 2828     ; 5594     ; 23853771 ;
+; clk50                                                                                                                                                                   ; clk50                                                                                                                                                                   ; 18881    ; 2828     ; 5427     ; 23491478 ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk          ; HPS_DDR3_CK_P                                                                                                                                                           ; inactive ; inactive ; 0        ; 0        ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk ; HPS_DDR3_DQS_N_OUT                                                                                                                                                      ; inactive ; inactive ; 0        ; 0        ;
 ; HPS_DDR3_DQS_P_IN                                                                                                                                                       ; HPS_DDR3_DQS_P_IN                                                                                                                                                       ; inactive ; 0        ; inactive ; 0        ;
@@ -40051,7 +40051,7 @@ Entries labeled "false path" only account for clock-to-clock false paths and not
 +-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------+----------+----------+----------+
 ; From Clock                                                                                                                                                              ; To Clock                                                                                                                                                                ; RR Paths ; FR Paths ; RF Paths ; FF Paths ;
 +-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------+----------+----------+----------+
-; clk50                                                                                                                                                                   ; clk50                                                                                                                                                                   ; 18807    ; 2828     ; 5594     ; 23853771 ;
+; clk50                                                                                                                                                                   ; clk50                                                                                                                                                                   ; 18881    ; 2828     ; 5427     ; 23491478 ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk          ; HPS_DDR3_CK_P                                                                                                                                                           ; inactive ; inactive ; 0        ; 0        ;
 ; HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk ; HPS_DDR3_DQS_N_OUT                                                                                                                                                      ; inactive ; inactive ; 0        ; 0        ;
 ; HPS_DDR3_DQS_P_IN                                                                                                                                                       ; HPS_DDR3_DQS_P_IN                                                                                                                                                       ; inactive ; 0        ; inactive ; 0        ;
@@ -40140,7 +40140,7 @@ No non-DPA dedicated SERDES Receiver circuitry present in device or used in desi
 Info: *******************************************************************
 Info: Running Quartus Prime Timing Analyzer
     Info: Version 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
-    Info: Processing started: Fri Sep 11 14:35:51 2026
+    Info: Processing started: Fri Sep 11 15:52:12 2026
 Info: Command: quartus_sta HFTTop -c HFTTop
 Info: qsta_default_script.tcl version: #1
 Warning (18236): Number of processors has not been specified which may cause overloading on shared machines.  Set the global assignment NUM_PARALLEL_PROCESSORS in your QSF to an appropriate value for best performance.
@@ -40476,38 +40476,38 @@ Info (332171): The following clock uncertainty values are less than the recommen
     Info (332172): Hold clock transfer from HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk (Fall) to HPS_DDR3_DQS_N_OUT (Rise) has uncertainty 0.000 that is less than the recommended uncertainty 0.210
 Info: Found TIMING_ANALYZER_REPORT_SCRIPT_INCLUDE_DEFAULT_ANALYSIS = ON
 Info: Analyzing Slow 1100mV 85C Model
-Info (332146): Worst-case setup slack is 2.505
+Info (332146): Worst-case setup slack is 2.401
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     2.505               0.000 clk50 
+    Info (332119):     2.401               0.000 clk50 
     Info (332119):     2.563               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
 Info (332146): Worst-case hold slack is 0.143
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     0.143               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):     0.245               0.000 clk50 
+    Info (332119):     0.239               0.000 clk50 
 Info (332146): Worst-case recovery slack is 5.041
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     5.041               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):    16.195               0.000 clk50 
-Info (332146): Worst-case removal slack is 0.867
+    Info (332119):    15.151               0.000 clk50 
+Info (332146): Worst-case removal slack is 0.944
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     0.867               0.000 clk50 
+    Info (332119):     0.944               0.000 clk50 
     Info (332119):     1.063               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
 Info (332146): Worst-case minimum pulse width slack is 1.025
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     1.025               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk 
     Info (332119):     1.039               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):     8.898               0.000 clk50 
+    Info (332119):     8.901               0.000 clk50 
 Info (332114): Report Metastability: Found 3 synchronizer chains.
     Info (332114): The design MTBF is not calculated because there are no specified synchronizers in the design.
     Info (332114): Number of Synchronizer Chains Found: 3
     Info (332114): Shortest Synchronizer Chain: 2 Registers
     Info (332114): Fraction of Chains for which MTBFs Could Not be Calculated: 1.000
-    Info (332114): Worst Case Available Settling Time: 22.359 ns
+    Info (332114): Worst Case Available Settling Time: 19.517 ns
     Info (332114): 
 Info: Initializing DDR database for CORE hps_sdram_p0
 Info: Finding port-to-pin mapping for CORE: hps_sdram_p0 INSTANCE: u0|hps_0|hps_io|border|hps_sdram_inst
@@ -40574,38 +40574,38 @@ Info (332171): The following clock uncertainty values are less than the recommen
     Info (332172): Hold clock transfer from HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk (Rise) to HPS_DDR3_DQS_N_OUT (Rise) has uncertainty 0.000 that is less than the recommended uncertainty 0.210
     Info (332172): Setup clock transfer from HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk (Fall) to HPS_DDR3_DQS_N_OUT (Rise) has uncertainty 0.000 that is less than the recommended uncertainty 0.210
     Info (332172): Hold clock transfer from HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk (Fall) to HPS_DDR3_DQS_N_OUT (Rise) has uncertainty 0.000 that is less than the recommended uncertainty 0.210
-Info (332146): Worst-case setup slack is 2.543
+Info (332146): Worst-case setup slack is 2.482
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     2.543               0.000 clk50 
+    Info (332119):     2.482               0.000 clk50 
     Info (332119):     2.560               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
 Info (332146): Worst-case hold slack is 0.162
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     0.162               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):     0.232               0.000 clk50 
+    Info (332119):     0.227               0.000 clk50 
 Info (332146): Worst-case recovery slack is 5.134
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     5.134               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):    16.385               0.000 clk50 
-Info (332146): Worst-case removal slack is 0.813
+    Info (332119):    15.375               0.000 clk50 
+Info (332146): Worst-case removal slack is 0.849
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     0.813               0.000 clk50 
+    Info (332119):     0.849               0.000 clk50 
     Info (332119):     1.012               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
 Info (332146): Worst-case minimum pulse width slack is 1.030
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     1.030               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk 
     Info (332119):     1.046               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):     8.925               0.000 clk50 
+    Info (332119):     8.932               0.000 clk50 
 Info (332114): Report Metastability: Found 3 synchronizer chains.
     Info (332114): The design MTBF is not calculated because there are no specified synchronizers in the design.
     Info (332114): Number of Synchronizer Chains Found: 3
     Info (332114): Shortest Synchronizer Chain: 2 Registers
     Info (332114): Fraction of Chains for which MTBFs Could Not be Calculated: 1.000
-    Info (332114): Worst Case Available Settling Time: 22.626 ns
+    Info (332114): Worst Case Available Settling Time: 19.962 ns
     Info (332114): 
 Info: Initializing DDR database for CORE hps_sdram_p0
 Info: Finding port-to-pin mapping for CORE: hps_sdram_p0 INSTANCE: u0|hps_0|hps_io|border|hps_sdram_inst
@@ -40676,21 +40676,21 @@ Info (332146): Worst-case setup slack is 2.943
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     2.943               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):     5.232               0.000 clk50 
+    Info (332119):     5.146               0.000 clk50 
 Info (332146): Worst-case hold slack is 0.084
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     0.084               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):     0.148               0.000 clk50 
+    Info (332119):     0.140               0.000 clk50 
 Info (332146): Worst-case recovery slack is 5.393
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     5.393               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):    17.298               0.000 clk50 
-Info (332146): Worst-case removal slack is 0.489
+    Info (332119):    16.589               0.000 clk50 
+Info (332146): Worst-case removal slack is 0.591
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     0.489               0.000 clk50 
+    Info (332119):     0.591               0.000 clk50 
     Info (332119):     0.984               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
 Info (332146): Worst-case minimum pulse width slack is 1.300
     Info (332119):     Slack       End Point TNS Clock 
@@ -40703,7 +40703,7 @@ Info (332114): Report Metastability: Found 3 synchronizer chains.
     Info (332114): Number of Synchronizer Chains Found: 3
     Info (332114): Shortest Synchronizer Chain: 2 Registers
     Info (332114): Fraction of Chains for which MTBFs Could Not be Calculated: 1.000
-    Info (332114): Worst Case Available Settling Time: 25.453 ns
+    Info (332114): Worst Case Available Settling Time: 23.240 ns
     Info (332114): 
 Info: Initializing DDR database for CORE hps_sdram_p0
 Info: Finding port-to-pin mapping for CORE: hps_sdram_p0 INSTANCE: u0|hps_0|hps_io|border|hps_sdram_inst
@@ -40772,34 +40772,34 @@ Info (332146): Worst-case setup slack is 2.943
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     2.943               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):     5.681               0.000 clk50 
+    Info (332119):     5.653               0.000 clk50 
 Info (332146): Worst-case hold slack is 0.077
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     0.077               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):     0.134               0.000 clk50 
+    Info (332119):     0.128               0.000 clk50 
 Info (332146): Worst-case recovery slack is 5.491
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     5.491               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):    17.642               0.000 clk50 
-Info (332146): Worst-case removal slack is 0.443
+    Info (332119):    17.007               0.000 clk50 
+Info (332146): Worst-case removal slack is 0.507
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
-    Info (332119):     0.443               0.000 clk50 
+    Info (332119):     0.507               0.000 clk50 
     Info (332119):     0.889               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
 Info (332146): Worst-case minimum pulse width slack is 1.304
     Info (332119):     Slack       End Point TNS Clock 
     Info (332119): ========= =================== =====================
     Info (332119):     1.304               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|pll_write_clk_dq_write_clk 
     Info (332119):     1.311               0.000 HPSfgpa2:u0|HPSfgpa2_hps_0:hps_0|HPSfgpa2_hps_0_hps_io:hps_io|HPSfgpa2_hps_0_hps_io_border:border|hps_sdram:hps_sdram_inst|hps_sdram_pll:pll|afi_clk_write_clk 
-    Info (332119):     8.441               0.000 clk50 
+    Info (332119):     8.442               0.000 clk50 
 Info (332114): Report Metastability: Found 3 synchronizer chains.
     Info (332114): The design MTBF is not calculated because there are no specified synchronizers in the design.
     Info (332114): Number of Synchronizer Chains Found: 3
     Info (332114): Shortest Synchronizer Chain: 2 Registers
     Info (332114): Fraction of Chains for which MTBFs Could Not be Calculated: 1.000
-    Info (332114): Worst Case Available Settling Time: 26.034 ns
+    Info (332114): Worst Case Available Settling Time: 24.155 ns
     Info (332114): 
 Info: Initializing DDR database for CORE hps_sdram_p0
 Info: Finding port-to-pin mapping for CORE: hps_sdram_p0 INSTANCE: u0|hps_0|hps_io|border|hps_sdram_inst
@@ -40841,8 +40841,8 @@ Info (332101): Design is fully constrained for setup requirements
 Info (332101): Design is fully constrained for hold requirements
 Info: Quartus Prime Timing Analyzer was successful. 0 errors, 198 warnings
     Info: Peak virtual memory: 5861 megabytes
-    Info: Processing ended: Fri Sep 11 14:36:25 2026
-    Info: Elapsed time: 00:00:34
-    Info: Total CPU time (on all processors): 00:00:43
+    Info: Processing ended: Fri Sep 11 15:52:52 2026
+    Info: Elapsed time: 00:00:40
+    Info: Total CPU time (on all processors): 00:00:55
 
 

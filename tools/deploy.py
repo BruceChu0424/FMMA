@@ -129,11 +129,90 @@ def fabric_status(board):
     return out.strip().splitlines()[-1].strip() if out.strip() else "unknown"
 
 
+# MSEL[4:0], read from the FPGA manager status register.  Only the FPP
+# modes let the HPS configure the fabric; in AS mode the FPGA loads
+# itself from the on-board serial flash and the driver refuses with
+# "Invalid MSEL setting".
+MSEL_MODES = {
+    0b10010: ("AS",     False, "FPGA configures itself from EPCQ flash"),
+    0b10011: ("AS",     False, "FPGA configures itself from EPCQ flash"),
+    0b10000: ("PS",     False, "passive serial"),
+    0b10001: ("PS",     False, "passive serial"),
+    0b01000: ("FPPx8",  True,  ""),
+    0b01001: ("FPPx8",  True,  ""),
+    0b01010: ("FPPx16", True,  ""),
+    0b01011: ("FPPx16", True,  ""),
+    0b00000: ("FPPx32", True,  ""),
+    0b00001: ("FPPx32", True,  ""),
+}
+
+
+def read_msel(board):
+    """Return (msel, name, hps_can_configure), or None if it cannot be read.
+
+    Builds tools/msel.c on the board and runs it.  That reads an HPS
+    peripheral register, not the FPGA bridge, so it is safe whatever
+    state the fabric is in.
+    """
+    ip = board_ip(board)
+    if not ip:
+        return None
+    try:
+        with FileServer(REPO / "build" / "stage") as srv:
+            host = host_ip_for(ip)
+            rel = srv.stage(REPO / "tools" / "msel.c")
+            board.run(f"mkdir -p {REMOTE_DIR}", check=False)
+            board.run(f"wget -q -O {REMOTE_DIR}/msel.c --timeout=30 "
+                      f"'{srv.url_for(rel, host)}'", timeout=60)
+        code, _ = board.run(f"cd {REMOTE_DIR} && gcc -O2 -o msel msel.c",
+                            timeout=120, check=False)
+        if code != 0:
+            return None
+        code, out = board.run(f"{REMOTE_DIR}/msel 2>/dev/null", check=False)
+        if code != 0:
+            return None
+    except BoardError:
+        return None
+
+    for line in reversed(out.strip().splitlines()):
+        line = line.strip()
+        if line.isdigit():
+            msel = int(line)
+            name, ok, _note = MSEL_MODES.get(msel, ("unknown", False, ""))
+            return msel, name, ok
+    return None
+
+
+def explain_msel(msel, name):
+    print(f"  MSEL[4:0] = {msel:05b} ({name})")
+    print()
+    print("  The HPS can only configure the FPGA in an FPP mode. Set SW10")
+    print("  (the 6-position DIP switch) to MSEL = 01010 (FPPx16):")
+    print()
+    print("      SW10.1 = MSEL0 = 0  -> ON")
+    print("      SW10.2 = MSEL1 = 1  -> OFF")
+    print("      SW10.3 = MSEL2 = 0  -> ON")
+    print("      SW10.4 = MSEL3 = 1  -> OFF")
+    print("      SW10.5 = MSEL4 = 0  -> ON")
+    print()
+    print("  Then power-cycle the board. Alternatively, program over JTAG")
+    print("  with a USB-Blaster, which works in any mode.")
+
+
 def cmd_status(board, args):
     print(f"serial      : {board.port_name}")
     ip = board_ip(board)
     print(f"board IP    : {ip or 'none (run: deploy.py net)'}")
     print(f"FPGA        : {fabric_status(board)}")
+    info = read_msel(board)
+    if info is None:
+        print("MSEL        : could not read")
+    else:
+        msel, name, ok = info
+        print(f"MSEL        : {msel:05b} ({name}) - HPS configuration "
+              f"{'available' if ok else 'BLOCKED'}")
+        if not ok:
+            explain_msel(msel, name)
     _, out = board.run("uname -r; gcc -dumpversion 2>/dev/null || echo 'no gcc'",
                        check=False)
     for label, line in zip(("kernel", "gcc"), out.splitlines()):
@@ -212,23 +291,44 @@ def cmd_restore(board, args):
 
 def _program(board, path, restore_on_failure):
     """Program the fabric and prove it worked before anyone touches it."""
+    # Refuse early and usefully if the board is not strapped for HPS
+    # configuration: the driver's own error is just "Invalid MSEL
+    # setting" followed by a timeout, which explains nothing.
+    info = read_msel(board)
+    if info is not None:
+        msel, name, ok = info
+        if not ok:
+            print(f"  cannot configure from the HPS in {name} mode")
+            explain_msel(msel, name)
+            return 1
+        print(f"  MSEL = {msel:05b} ({name}) - the HPS can configure the FPGA")
+
     print("  disabling the bridges")
     for b in BRIDGES:
         board.run(f"echo 0 > /sys/class/fpga-bridge/{b}/enable", check=False)
 
-    # A marker in the kernel log, so only messages from THIS attempt count.
-    board.run("echo '--- fmma configuring ---' > /dev/kmsg 2>/dev/null || true",
-              check=False)
+    # Count configuration timeouts before and after, rather than trying to
+    # mark the log: a marker that fails to write makes an old timeout look
+    # like a new one, and then even a good bitstream is reported as failed.
+    _, before = board.run("dmesg | grep -c 'fpgamgr: timeout' || true",
+                          check=False)
 
     print("  writing the bitstream")
     board.run(f"dd if={path} of=/dev/fpga0 bs=1M 2>&1 | tail -1", timeout=120)
     time.sleep(2)
 
     status = fabric_status(board)
-    _, log = board.run("dmesg | tail -20", check=False)
-    timed_out = "fpgamgr" in log and "timeout" in log.split(
-        "--- fmma configuring ---")[-1]
+    _, after = board.run("dmesg | grep -c 'fpgamgr: timeout' || true",
+                         check=False)
 
+    def _count(text):
+        for line in reversed(text.strip().splitlines()):
+            line = line.strip()
+            if line.isdigit():
+                return int(line)
+        return 0
+
+    timed_out = _count(after) > _count(before)
     print(f"  FPGA manager reports: {status}")
 
     if status != "user mode" or timed_out:
