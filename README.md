@@ -39,7 +39,7 @@ Built on the 32-bit CPU designed in ECE 3710 by group 1011.
 | Simulation | **green** — 99 Python tests, 63 C unit checks, 9,548 ALU equivalence vectors, 31 full-chain RTL assertions, 10 ISA conformance checks, ~25 s |
 | FPGA build | **timing closed** at 50 MHz — see [docs/13](docs/13-test-report.md) |
 | Host program | **builds clean** under `-Wall -Wextra`; cross-built static for the board |
-| On board | **running** — CPU in the fabric answers a quote in **3 µs min / 5 µs mean** over 5,000 quotes, 0 missed, 0 disagreements with the software model |
+| On board | **running** — CPU in the fabric answers a quote in **3–4 µs min / 5 µs mean** over 5,000 quotes, 0 missed, 0 disagreements with the software model |
 | Live market data | **running** — Coinbase BTC-USD → fabric → decision, 424 quotes / 23 decisions in 90 s |
 | Paper orders | **not run** — the key committed in `d65ee28` must be revoked first ([docs/18](docs/18-security-and-compliance.md)) |
 
@@ -56,60 +56,116 @@ Measured, with the commands that produced every figure, in
 
 ## Quick start
 
-### Run the tests (no hardware needed)
+Five stages, in order. Each one is worth doing before the next,
+because each one fails in a way the next one would only obscure.
+
+### 1. Run the tests — no hardware needed
 
 ```bash
-Testbenches/run_sim.sh
+tools/sim.sh
 ```
 
-About 25 seconds. Prints `all green`, and the measured latency figures.
+About 25 seconds, six stages, prints `all green` and the measured
+latency figures. It runs in a container, so nothing has to be
+installed; if you already have Icarus Verilog and Python 3, run
+`Testbenches/run_sim.sh` directly instead.
 
-### Build the FPGA image
+This is also the fastest way to see what the project *is*: the output
+names every property that is checked and what it measured.
+
+### 2. Build the FPGA image
 
 ```bash
-quartus_sh --flow compile HFTTop        # about an hour
-quartus_pgm -m jtag -o "p;output_files/HFTTop.sof"
+quartus_sh --flow compile HFTTop        # about an hour, mostly fitting
 ```
 
-`HEX0` should then show a steady `8` — the CPU is parked at its entry word
-waiting for a program. That single digit confirms the fabric is configured,
-the CPU is out of reset and the shared RAM came up zeroed.
+Expect **0 errors** and exactly two Critical Warnings, both about HPS
+DDR3 pin placement ([docs/13](docs/13-test-report.md) §13.2). The
+`output_files/HFTTop.sof` and `.rbf` in this repository are built from
+the committed sources, so this step can be skipped the first time
+through.
 
-### Run it on the board
+### 3. Set MSEL, once, before powering the board
 
-`tools/deploy.py` automates the whole bring-up over the serial console
-and the network — see [docs/11](docs/11-board-bringup.md):
+**`SW10` position 4 OFF, position 5 ON** — MSEL = `01010`, Fast
+Passive Parallel x16. The factory setting is Active Serial, in which
+the FPGA loads itself from flash and **the HPS cannot configure it at
+all**: every bitstream, including Terasic's own, is refused with
+`Invalid MSEL setting` and a timeout. It looks exactly like a bad
+bitstream and is not. This cost a day; [docs/11](docs/11-board-bringup.md)
+§11.4.
+
+Power-cycle after moving the switches. Connect USB-UART and Ethernet.
+
+### 4. Bring the board up
 
 ```bash
-python tools/deploy.py net      # DHCP on the board
-python tools/deploy.py fpga     # program the FPGA, with a safety check
-python tools/deploy.py push     # copy the software
-python tools/deploy.py build
-python tools/deploy.py probe ramtest
+python tools/deploy.py --port COM5 status   # what state is it in?
+python tools/deploy.py --port COM5 net      # DHCP on eth0
+python tools/deploy.py --port COM5 fpga     # configure, with safety checks
 ```
 
-then, on the board:
+`fpga` prints `done: user mode`. **Now look at `HEX0`: it should show a
+steady `8`.** Do not skip that. On Cyclone V there is no timeout on the
+HPS-to-FPGA bridge — touching it while the fabric is unconfigured hangs
+the board hard enough to need the power pulled, with no software
+recovery. Every tool here checks the FPGA manager first, but the check
+cannot prove the *right* design is loaded. `HEX0` can.
 
 ```bash
-export APCA_API_KEY_ID=...              # paper keys; never commit them
-export APCA_API_SECRET_KEY=...
-sudo -E ./marketstream --dry-run --verbose
+python tools/deploy.py --port COM5 probe ramtest
+```
+
+`PASS - 256 words, 32 data bits, no errors` means the window really is
+our shared RAM. The stock reference design puts PIO registers at this
+address and fails this immediately.
+
+### 5. Get the software onto the board
+
+```bash
+python tools/deploy.py --port COM5 push     # sources
+tools/crossbuild.sh                         # static armhf binaries
+python tools/deploy.py --port COM5 pushbin  # binaries
+```
+
+`marketstream` **cannot be built on the board**: the stock image ships
+`libssl.so` without its headers and its Ubuntu 12.04 archives have been
+retired, so `libssl-dev` cannot be installed. `crossbuild.sh` produces a
+static armhf binary from a container; the first run builds the image and
+takes a few minutes. The two diagnostics need nothing but libc and do
+build on the board, in about a second (`make probe bench`).
+
+### Then: see it work
+
+```bash
+./fmma-bench --selftest                     # 21 protocol checks on the fabric
+./fmma-bench --ticks 5000 --interval 300    # latency, and hardware/software agreement
+./marketstream --dry-run --threshold 200 --stats 30
 ```
 
 ```
 === FMMA: BTC-USD -> FPGA -> paper trading (protocol v2) ===
-[  0.003] info  fpga     shared RAM mapped at 0xFF200000, 1024 words
-[  0.011] info  fpga     writing 154 program words at word 8, entry word last
-[  0.019] info  fpga     program verified
-[  0.121] info  fpga     CPU running: protocol v2, heartbeat 128341, position 0
-[  0.402] info  feed     connected, subscribed to BTC-USD ticker
-[  1.233] debug feed     bid 97431.02  ask 97431.98
-[  3.891] info  app      >>> FPGA BUY  (tick 8, 812 us after the quote, fabric position 0)
-[  3.891] info  exec     dry run: would send buy 0.001 BTCUSD
+[  0.000] info  fpga     shared RAM mapped at 0xFF200000, 1024 words
+[  0.000] info  fpga     writing 154 program words at word 8, entry word last
+[  0.000] info  fpga     program verified
+[  0.100] info  fpga     CPU running: protocol v2, heartbeat 128337, position 0
+[  0.827] info  feed     connected, subscribed to BTC-USD ticker
+[  0.951] info  app      >>> FPGA BUY  (tick 10904, 5 us after the quote, fabric position 0)
+[  0.951] info  exec     dry run: would send buy 0.001 BTCUSD
 ```
 
-Drop `--dry-run` to trade the paper account. `--no-fpga` runs the whole
-thing on a laptop with no board and no root.
+**That `>>> FPGA BUY` line is the project working**: real Coinbase
+market data, and a CPU we designed, running in the fabric, deciding in
+five microseconds.
+
+To trade the paper account, export `APCA_API_KEY_ID` and
+`APCA_API_SECRET_KEY` and drop `--dry-run` — with `sudo -E`, because
+plain `sudo` strips the environment. **Read
+[docs/18](docs/18-security-and-compliance.md) first: the key committed
+in `d65ee28` is in this repository's history and must be revoked.**
+
+`--no-fpga` runs the feed, the strategy and the broker path on a laptop,
+with no board and no root.
 
 ## What is where
 
@@ -169,18 +225,30 @@ rebuild. [docs/08](docs/08-trading-strategy.md) explains the design, and
 
 ## Requirements
 
-**Hardware:** DE1-SoC, a microSD card with a Cyclone V Linux image, Ethernet
-with a route to the internet, USB-Blaster.
+**Hardware:** DE1-SoC, a microSD card with a Cyclone V Linux image,
+Ethernet with a route to the internet, and a USB cable for the serial
+console. A USB-Blaster is *not* required — the FPGA is configured from
+Linux over the same serial link.
 
-**Development PC:** Quartus Prime Lite 25.1, Python 3, Icarus Verilog
-(`winget install Icarus.Verilog`). See
-[docs/10](docs/10-build-guide.md) for the toolchain traps on this machine —
-there are several, and two of them will produce a binary that silently
-cannot connect to anything.
+**Development PC:** Docker, plus Python 3 with `pyserial` for the board
+tools. That covers everything except building the bitstream:
+`tools/sim.sh` runs the verification suite and `tools/crossbuild.sh`
+builds the armhf binaries, so neither Icarus Verilog nor an ARM
+toolchain has to be installed. There is no iverilog package in winget
+and Quartus's bundled Questa wants a licence file, so on Windows the
+container is the practical route.
 
-**On the board:** `build-essential`, `libssl-dev`, and a default route.
-The older DE1-SoC images have gcc 4.6 and no OpenSSL headers; in that
-case cross-compile with `make static` ([docs/10](docs/10-build-guide.md) §10.4a).
+**To rebuild the bitstream:** Quartus Prime Lite 25.1. The built `.sof`
+and `.rbf` are committed, so this is only needed after an RTL change.
+
+**On the board:** a default route, and nothing else. The two
+diagnostics build there against libc alone; `marketstream` cannot be
+built there at all and is cross-compiled
+([docs/10](docs/10-build-guide.md) §10.4a).
+
+[docs/10](docs/10-build-guide.md) lists the toolchain traps — there are
+several, and two of them produce a binary that silently cannot connect
+to anything.
 
 > **Never read the HPS-to-FPGA bridge unless the FPGA is configured.**
 > Cyclone V has no bus timeout, so the access never completes and the
