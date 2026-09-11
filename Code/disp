@@ -1,3 +1,15 @@
+////////////////////////////////////////////////
+// FMMA - FPGA Market Maker Accelerator
+//
+// PC displacer: computes the next PC value.
+//
+// control 00 : hold
+// control 01 : PC + 1 (sequential)
+// control 10 : PC + disp (branch - the displacement is
+//              SIGNED, so backward branches work)
+// control 11 : addr (absolute jump through a register)
+////////////////////////////////////////////////
+
 module Disp(PCold, control, PCnew, disp, addr);
 
 input [9:0] PCold, addr;
@@ -16,7 +28,10 @@ always @(*) begin
     end
 	 
 	 2'b10: begin 
-        PCnew  = PCold + disp;
+        // sign-extend the 8-bit displacement to 10 bits
+        // (previously the unsigned addition turned backward
+        // branches into large forward jumps)
+        PCnew  = PCold + {{2{disp[7]}}, disp};
     end
 	 
 	 2'b11: begin 

@@ -1,78 +1,79 @@
-module HFTtop(
+////////////////////////////////////////////////
+// FMMA - FPGA Market Maker Accelerator
+// ECE 4900 senior project, built on the ECE 3710
+// group 1011 custom 32-bit RISC CPU.
+//
+// Top level: custom CPU + shared on-chip RAM + HPS
+//
+// The Qsys system (HPSfgpa2) contains:
+//   - Cyclone V HPS (ARM) with DDR3
+//   - 4 KB dual-port on-chip RAM
+//       port s1 <- HPS lightweight AXI master
+//                  (Linux mmap base 0xFF200000)
+//       port s2 <- this CPU (fetch / load / store)
+//
+// Boot behaviour: the RAM powers up zeroed and a
+// 32'b0 instruction parks the CPU in a halt-poll
+// state (see FSMTrial). The HPS Linux program
+// writes the trading program into RAM first, then
+// streams market data. As soon as the word at the
+// PC becomes non-zero the CPU decodes it and runs,
+// so no reset handshake between HPS and FPGA is
+// required.
+//
+// Kept in sync with Code/HFTtop.v (this copy is
+// the one referenced by HFTTop.qsf).
+////////////////////////////////////////////////
 
-    input clk, input rst, output [6:0] dataseg,
-
-    //////////// CLOCK //////////
-    input                    CLOCK2_50,
-    input                    CLOCK3_50,
-    input                    CLOCK4_50,
+module HFTTop(
     input                    CLOCK_50,
 
     //////////// SEG7 //////////
-    //output           [6:0]  HEX0,
-    //output           [6:0]  HEX1,
-    //output           [6:0]  HEX2,
-    //output           [6:0]  HEX3,
-    //output           [6:0]  HEX4,
-    //output           [6:0]  HEX5,
- 
-    //////////// KEY //////////
-    //input            [3:0]  KEY,
+    output           [6:0]   HEX0,
 
     //////////// HPS //////////
-    inout                     HPS_CONV_USB_N,
-    output           [14:0]   HPS_DDR3_ADDR,
-    output            [2:0]   HPS_DDR3_BA,
-    output                    HPS_DDR3_CAS_N,
-    output                    HPS_DDR3_CKE,
-    output                    HPS_DDR3_CK_N,
-    output                    HPS_DDR3_CK_P,
-    output                    HPS_DDR3_CS_N,
-    output            [3:0]   HPS_DDR3_DM,
-    inout            [31:0]   HPS_DDR3_DQ,
-    inout             [3:0]   HPS_DDR3_DQS_N,
-    inout             [3:0]   HPS_DDR3_DQS_P,
-    output                    HPS_DDR3_ODT,
-    output                    HPS_DDR3_RAS_N,
-    output                    HPS_DDR3_RESET_N,
-    input                     HPS_DDR3_RZQ,
-    output                    HPS_DDR3_WE_N,
-    output                    HPS_ENET_GTX_CLOCK_50,
-    inout                     HPS_ENET_INT_N,
-    output                    HPS_ENET_MDC,
-    inout                     HPS_ENET_MDIO,
-    input                     HPS_ENET_RX_CLOCK_50,
-    input             [3:0]   HPS_ENET_RX_DATA,
-    input                     HPS_ENET_RX_DV,
-    output            [3:0]   HPS_ENET_TX_DATA,
-    output                    HPS_ENET_TX_EN,
-    inout             [3:0]   HPS_FLASH_DATA,
-    output                    HPS_FLASH_DCLOCK_50,
-    output                    HPS_FLASH_NCSO,
-    inout                     HPS_GSENSOR_INT,
-    inout                     HPS_I2C1_SCLOCK_50,
-    inout                     HPS_I2C1_SDAT,
-    inout                     HPS_I2C2_SCLOCK_50,
-    inout                     HPS_I2C2_SDAT,
-    inout                     HPS_I2C_CONTROL,
-    inout                     HPS_KEY,
-    inout                     HPS_LED,
-    inout                     HPS_LTC_GPIO,
-    output                    HPS_SD_CLOCK_50,
-    inout                     HPS_SD_CMD,
-    inout             [3:0]   HPS_SD_DATA,
-    output                    HPS_SPIM_CLOCK_50,
-    input                     HPS_SPIM_MISO,
-    output                    HPS_SPIM_MOSI,
-    inout                     HPS_SPIM_SS,
-    input                     HPS_UART_RX,
-    output                    HPS_UART_TX,
-    input                     HPS_USB_CLOCK_50OUT,
-    inout             [7:0]   HPS_USB_DATA,
-    input                     HPS_USB_DIR,
-    input                     HPS_USB_NXT,
-    output                    HPS_USB_STP
+    output           [12:0]  HPS_DDR3_ADDR,
+    output            [2:0]  HPS_DDR3_BA,
+    output                   HPS_DDR3_CAS_N,
+    output                   HPS_DDR3_CKE,
+    output                   HPS_DDR3_CK_N,
+    output                   HPS_DDR3_CK_P,
+    output                   HPS_DDR3_CS_N,
+    output                   HPS_DDR3_DM,
+    inout             [7:0]  HPS_DDR3_DQ,
+    inout                   HPS_DDR3_DQS_N,
+    inout                   HPS_DDR3_DQS_P,
+    output                   HPS_DDR3_ODT,
+    output                   HPS_DDR3_RAS_N,
+    output                   HPS_DDR3_RESET_N,
+    input                    HPS_DDR3_RZQ,
+    output                   HPS_DDR3_WE_N
 );
+
+// --------------------------------------------
+// Power-on reset for the CPU fabric.
+// The CPU registers use an active-high reset,
+// the FSM an active-low reset (legacy lab code);
+// POR is asserted for ~16 cycles after
+// configuration and then released forever.
+// --------------------------------------------
+reg [4:0] por_cnt = 5'd0;
+always @(posedge CLOCK_50) begin
+    if (!por_cnt[4])
+        por_cnt <= por_cnt + 5'd1;
+end
+wire cpu_rst = ~por_cnt[4];          // active high
+wire fsm_rst = por_cnt[4];           // active low (release)
+
+// --------------------------------------------
+// CPU <-> shared RAM bus (Avalon MM slave that
+// the Qsys system exports as fpga_bram_s2).
+// The port is word addressed (1024 x 32 bit).
+// --------------------------------------------
+wire [9:0]  mem_addr;                // word address
+wire [31:0] mem_rdata;
+wire [31:0] mem_wdata;
+wire        mem_write;
 
 wire [31:0] r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15;
 wire [31:0] instrR, instr, rAddr, Imm, ALUout, DestImm, rDest, rSrc2, ALUMUXout, addr, data;
@@ -84,80 +85,71 @@ wire [3:0]  op, rSrc, outaddr, rDst;
 wire [1:0]  dispcontrol;
 wire        ImmSelect, RS, PCen, LS, we, Fen, IRen;
 
-// *** NEW: memory bus helper signals for single-port on-chip RAM ***
-wire [31:0] mem_addr;      // Avalon-style address (use low bits)
-wire [31:0] mem_rdata;
-wire [31:0] mem_wdata;
-wire        mem_write;
-
-// 7-seg display to test bram read (data load)
-decoder DataDisplay(.in(mem_rdata[15:0]), .segment_display(dataseg));
-
-// Old custom BRAM (dual-port) – now replaced by PD on-chip memory
-//bram memory(.data_a(32'b00000000000000000000000000000000), .data_b(rSrc2), 
-//.we_a(1'b0), .we_b(we), .addr_a(pc_out), .addr_b(rAddr[9:0]), .q_a(instr), .q_b(data), .clk(CLOCK_50));
-
-///////////////////////////////////////////
-// Single-port on-chip memory wiring
-///////////////////////////////////////////
-
-// Address mux:
-//  - When LS = 0 → instruction fetch: use PC
-//  - When LS = 1 → load/store: use rAddr
-assign mem_addr  = LS ? {22'b0, rAddr[9:0]} : {22'b0, pc_out};
-
-// Data to write on store comes from rSrc2 (source register)
+// Fetch uses the PC; loads (LS) and stores (we)
+// use the address register. Stores assert we for
+// exactly one cycle (fixed: the old dual-port
+// design gated the write with we alone).
+assign mem_addr  = (LS | we) ? rAddr[9:0] : pc_out;
 assign mem_wdata = rSrc2;
+assign mem_write = we;
 
-// Write only during store cycles (FSM asserts we when LS indicates memory op)
-assign mem_write = we & LS;
-
-
-// Feed memory read data into both instruction and data paths
+// Memory read data feeds both the instruction
+// and the data path (single port, time muxed).
 assign instr = mem_rdata;
 assign data  = mem_rdata;
 
-///////////////////////////////////////////
+// Debug display: low nibble of the program
+// counter (steady '8' while waiting for the
+// program, flickering while the CPU runs).
+decoder PCDisplay(.in(pc_out), .segment_display(HEX0));
+
+// --------------------------------------------
 // Platform Designer system
-///////////////////////////////////////////
-
+// --------------------------------------------
 HPSfgpa2 u0 (
-    .clk_clk             (CLOCK_50),             //      clk.clk
+    .clk_clk                     (CLOCK_50),        //      clk.clk
 
-    // HPS DDR3 (unchanged)
-    .memory_mem_a        (HPS_DDR3_ADDR),        //   memory.mem_a
-    .memory_mem_ba       (HPS_DDR3_BA),         //         .mem_ba
-    .memory_mem_ck       (HPS_DDR3_CK_P),       //         .mem_ck
-    .memory_mem_ck_n     (HPS_DDR3_CK_N),       //         .mem_ck_n
-    .memory_mem_cke      (HPS_DDR3_CKE),        //         .mem_cke
-    .memory_mem_cs_n     (HPS_DDR3_CS_N),       //         .mem_cs_n
-    .memory_mem_ras_n    (HPS_DDR3_RAS_N),      //         .mem_ras_n
-    .memory_mem_cas_n    (HPS_DDR3_CAS_N),      //         .mem_cas_n
-    .memory_mem_we_n     (HPS_DDR3_WE_N),       //         .mem_we_n
-    .memory_mem_reset_n  (HPS_DDR3_RESET_N),    //         .mem_reset_n
-    .memory_mem_dq       (HPS_DDR3_DQ),         //         .mem_dq
-    .memory_mem_dqs      (HPS_DDR3_DQS_P),      //         .mem_dqs
-    .memory_mem_dqs_n    (HPS_DDR3_DQS_N),      //         .mem_dqs_n
-    .memory_mem_odt      (HPS_DDR3_ODT),        //         .mem_odt
-    .memory_mem_dm       (HPS_DDR3_DM),         //         .mem_dm
-    .memory_oct_rzqin    (HPS_DDR3_RZQ),        //         .oct_rzqin
+    // Shared on-chip RAM, CPU port
+    .fpga_bram_s2_address        (mem_addr),        // fpga_bram_s2.address
+    .fpga_bram_s2_chipselect     (1'b1),            //               .chipselect
+    .fpga_bram_s2_clken          (1'b1),            //               .clken
+    .fpga_bram_s2_write          (mem_write),       //               .write
+    .fpga_bram_s2_readdata       (mem_rdata),       //               .readdata
+    .fpga_bram_s2_writedata      (mem_wdata),       //               .writedata
+    .fpga_bram_s2_byteenable     (4'b1111),         //               .byteenable
 
-    // On-chip BRAM interface exported as "bram_out"
-    .bram_out_address    (mem_addr),        // bram_out.address (32-bit, low bits used)
-    .bram_out_chipselect (1'b1),  //          .chipselect
-    .bram_out_clken      (1'b1),            //          .clken
-    .bram_out_write      (mem_write),       //          .write
-    .bram_out_readdata   (mem_rdata),       //          .readdata
-    .bram_out_writedata  (mem_wdata),       //          .writedata
-    .bram_out_byteenable (4'b1111),         //          .byteenable
+    // MPU events are unused on this board
+    .hps_0_h2f_mpu_events_eventi     (1'b0),
+    .hps_0_h2f_mpu_events_evento     (),
+    .hps_0_h2f_mpu_events_standbywfe (),
+    .hps_0_h2f_mpu_events_standbywfi (),
 
-    .reset_reset_n       (rst)              //    reset.reset_n
+    // HPS DDR3 (hard controller on dedicated pins)
+    .memory_mem_a        (HPS_DDR3_ADDR),           //   memory.mem_a
+    .memory_mem_ba       (HPS_DDR3_BA),             //         .mem_ba
+    .memory_mem_ck       (HPS_DDR3_CK_P),           //         .mem_ck
+    .memory_mem_ck_n     (HPS_DDR3_CK_N),           //         .mem_ck_n
+    .memory_mem_cke      (HPS_DDR3_CKE),            //         .mem_cke
+    .memory_mem_cs_n     (HPS_DDR3_CS_N),           //         .mem_cs_n
+    .memory_mem_ras_n    (HPS_DDR3_RAS_N),          //         .mem_ras_n
+    .memory_mem_cas_n    (HPS_DDR3_CAS_N),          //         .mem_cas_n
+    .memory_mem_we_n     (HPS_DDR3_WE_N),           //         .mem_we_n
+    .memory_mem_reset_n  (HPS_DDR3_RESET_N),        //         .mem_reset_n
+    .memory_mem_dq       (HPS_DDR3_DQ),             //         .mem_dq
+    .memory_mem_dqs      (HPS_DDR3_DQS_P),          //         .mem_dqs
+    .memory_mem_dqs_n    (HPS_DDR3_DQS_N),          //         .mem_dqs_n
+    .memory_mem_odt      (HPS_DDR3_ODT),            //         .mem_odt
+    .memory_mem_dm       (HPS_DDR3_DM),             //         .mem_dm
+    .memory_oct_rzqin    (HPS_DDR3_RZQ)             //         .oct_rzqin
+
+    // Note: this system has no external reset port.
+    // The interconnect and RAM are reset internally
+    // from the HPS h2f_reset output.
 );
 
-///////////////////////////////////////////
+// --------------------------------------------
 // CPU datapath + control
-///////////////////////////////////////////
-
+// --------------------------------------------
 MUX16to1 srcMUX(
     .in0(r0),  .in1(r1),  .in2(r2),  .in3(r3),
     .in4(r4),  .in5(r5),  .in6(r6),  .in7(r7),
@@ -167,12 +159,19 @@ MUX16to1 srcMUX(
     .out(rSrc2)
 );
 
+// Datapath note: register/memory selection comes from the IR
+// output (instrR), not the raw RAM output. The IR latches the
+// instruction at the end of fetch and holds it for the whole
+// execute cycle. The original dual-port BRAM kept the
+// instruction readable on port A forever, but this single-port
+// RAM switches the address to rAddr during load/store, so
+// mem_rdata (instr) no longer holds the instruction then.
 MUX16to1 destMUX(
     .in0(r0),  .in1(r1),  .in2(r2),  .in3(r3),
     .in4(r4),  .in5(r5),  .in6(r6),  .in7(r7),
     .in8(r8),  .in9(r9),  .in10(r10),.in11(r11),
     .in12(r12),.in13(r13),.in14(r14),.in15(r15),
-    .control(instr[11:8]),
+    .control(instrR[11:8]),
     .out(rDest)
 );
 
@@ -181,7 +180,7 @@ MUX16to1 addrMUX(
     .in4(r4),  .in5(r5),  .in6(r6),  .in7(r7),
     .in8(r8),  .in9(r9),  .in10(r10),.in11(r11),
     .in12(r12),.in13(r13),.in14(r14),.in15(r15),
-    .control(instr[3:0]),
+    .control(instrR[3:0]),
     .out(rAddr)
 );
 
@@ -207,7 +206,7 @@ RegBank regBank(
     .r12(r12), .r13(r13), .r14(r14), .r15(r15),
     .regEnable(ren),
     .clk(CLOCK_50),
-    .rst(rst)
+    .rst(cpu_rst)
 );
 
 ALUFinal ALU(
@@ -219,9 +218,11 @@ ALUFinal ALU(
     .Cin(1'b0)
 );
 
+// The FSM holds an active-low reset (legacy lab
+// convention), every other CPU block is active high.
 FSMtrial FSM(
     .clk(CLOCK_50),
-    .rst(rst),
+    .rst(fsm_rst),
     .memin(instr),
     .Ren(RS),
     .displaceControl(dispcontrol),
@@ -243,7 +244,7 @@ PC PC(
     .in(PCchange),
     .out(pc_out),
     .clk(CLOCK_50),
-    .rst(rst),
+    .rst(cpu_rst),
     .enable(PCen)
 );
 
@@ -251,7 +252,7 @@ Disp Disp(
     .PCnew(PCchange),
     .PCold(pc_out),
     .control(dispcontrol),
-    .disp(instr[7:0]),
+    .disp(instrR[7:0]),
     .addr(rAddr[9:0])
 );
 
@@ -259,7 +260,7 @@ IR IR(
     .in(instr),
     .out(instrR),
     .clk(CLOCK_50),
-    .rst(rst),
+    .rst(cpu_rst),
     .enable(IRen)
 );
 
@@ -267,12 +268,12 @@ FR FR(
     .in(flags),
     .out(flagsR),
     .clk(CLOCK_50),
-    .rst(rst),
+    .rst(cpu_rst),
     .enable(Fen)
 );
 
 Encoder4to16 Encoder(
-    .Rdst(instr[11:8]),
+    .Rdst(instrR[11:8]),
     .regbankEn(ren),
     .encoderEn(RS)
 );

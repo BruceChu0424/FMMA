@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <EnsembleReport name="HPSfgpa2" kind="HPSfgpa2" version="1.0" fabric="QSYS">
  <!-- Format version 25.1 1129 (Future versions may contain additional information.) -->
- <!-- 2026.03.12.19:51:52 -->
+ <!-- 2026.09.11.10:53:29 -->
  <!-- A collection of modules and connections -->
  <parameter name="AUTO_GENERATION_ID">
   <type>java.lang.Integer</type>
-  <value>1773366711</value>
+  <value>1789145608</value>
   <derived>false</derived>
   <enabled>true</enabled>
   <visible>false</visible>
@@ -16135,14 +16135,6 @@ parameters are a RESULT of the module parameters. -->
     <width>1</width>
     <role>rready</role>
    </port>
-   <memoryBlock>
-    <isBridge>false</isBridge>
-    <moduleName>onchip_memory2_0</moduleName>
-    <slaveName>s1</slaveName>
-    <name>onchip_memory2_0.s1</name>
-    <baseAddress>0</baseAddress>
-    <span>4096</span>
-   </memoryBlock>
   </interface>
   <interface name="f2h_axi_clock" kind="clock_sink" version="25.1">
    <!-- The connection points exposed by a module instance for the
@@ -16923,6 +16915,14 @@ parameters are a RESULT of the module parameters. -->
     <width>1</width>
     <role>rready</role>
    </port>
+   <memoryBlock>
+    <isBridge>false</isBridge>
+    <moduleName>onchip_memory2_0</moduleName>
+    <slaveName>s1</slaveName>
+    <name>onchip_memory2_0.s1</name>
+    <baseAddress>0</baseAddress>
+    <span>4096</span>
+   </memoryBlock>
   </interface>
  </module>
  <module
@@ -42805,14 +42805,6 @@ parameters are a RESULT of the module parameters. -->
     <width>1</width>
     <role>rready</role>
    </port>
-   <memoryBlock>
-    <isBridge>false</isBridge>
-    <moduleName>onchip_memory2_0</moduleName>
-    <slaveName>s1</slaveName>
-    <name>onchip_memory2_0.s1</name>
-    <baseAddress>0</baseAddress>
-    <span>4096</span>
-   </memoryBlock>
   </interface>
   <interface name="h2f_lw_axi_clock" kind="clock_sink" version="25.1">
    <!-- The connection points exposed by a module instance for the
@@ -43169,6 +43161,14 @@ parameters are a RESULT of the module parameters. -->
     <width>1</width>
     <role>rready</role>
    </port>
+   <memoryBlock>
+    <isBridge>false</isBridge>
+    <moduleName>onchip_memory2_0</moduleName>
+    <slaveName>s1</slaveName>
+    <name>onchip_memory2_0.s1</name>
+    <baseAddress>0</baseAddress>
+    <span>4096</span>
+   </memoryBlock>
   </interface>
   <interface name="f2h_axi_clock" kind="clock_sink" version="25.1">
    <!-- The connection points exposed by a module instance for the
@@ -45077,20 +45077,20 @@ parameters are a RESULT of the module parameters. -->
     <span>536870912</span>
    </memoryBlock>
    <memoryBlock>
-    <isBridge>false</isBridge>
-    <moduleName>onchip_memory2_0</moduleName>
-    <slaveName>s1</slaveName>
-    <name>onchip_memory2_0.s1</name>
-    <baseAddress>3221225472</baseAddress>
-    <span>4096</span>
-   </memoryBlock>
-   <memoryBlock>
     <isBridge>true</isBridge>
     <moduleName>hps_0_bridges</moduleName>
     <slaveName>axi_h2f_lw</slaveName>
     <name>hps_0_bridges.axi_h2f_lw</name>
     <baseAddress>4280287232</baseAddress>
     <span>2097152</span>
+   </memoryBlock>
+   <memoryBlock>
+    <isBridge>false</isBridge>
+    <moduleName>onchip_memory2_0</moduleName>
+    <slaveName>s1</slaveName>
+    <name>onchip_memory2_0.s1</name>
+    <baseAddress>4280287232</baseAddress>
+    <span>4096</span>
    </memoryBlock>
    <memoryBlock>
     <isBridge>false</isBridge>
@@ -45908,20 +45908,20 @@ parameters are a RESULT of the module parameters. -->
     <span>536870912</span>
    </memoryBlock>
    <memoryBlock>
-    <isBridge>false</isBridge>
-    <moduleName>onchip_memory2_0</moduleName>
-    <slaveName>s1</slaveName>
-    <name>onchip_memory2_0.s1</name>
-    <baseAddress>3221225472</baseAddress>
-    <span>4096</span>
-   </memoryBlock>
-   <memoryBlock>
     <isBridge>true</isBridge>
     <moduleName>hps_0_bridges</moduleName>
     <slaveName>axi_h2f_lw</slaveName>
     <name>hps_0_bridges.axi_h2f_lw</name>
     <baseAddress>4280287232</baseAddress>
     <span>2097152</span>
+   </memoryBlock>
+   <memoryBlock>
+    <isBridge>false</isBridge>
+    <moduleName>onchip_memory2_0</moduleName>
+    <slaveName>s1</slaveName>
+    <name>onchip_memory2_0.s1</name>
+    <baseAddress>4280287232</baseAddress>
+    <span>4096</span>
    </memoryBlock>
    <memoryBlock>
     <isBridge>false</isBridge>
@@ -84890,10 +84890,10 @@ parameters are a RESULT of the module parameters. -->
   <endConnectionPoint>axi_slave0</endConnectionPoint>
  </connection>
  <connection
-   name="hps_0_bridges.h2f/onchip_memory2_0.s1"
+   name="hps_0_bridges.h2f_lw/onchip_memory2_0.s1"
    kind="avalon"
    version="25.1"
-   start="hps_0_bridges.h2f"
+   start="hps_0_bridges.h2f_lw"
    end="onchip_memory2_0.s1">
   <parameter name="arbitrationPriority">
    <type>int</type>
@@ -84936,7 +84936,7 @@ parameters are a RESULT of the module parameters. -->
    <valid>true</valid>
   </parameter>
   <startModule>hps_0_bridges</startModule>
-  <startConnectionPoint>h2f</startConnectionPoint>
+  <startConnectionPoint>h2f_lw</startConnectionPoint>
   <endModule>onchip_memory2_0</endModule>
   <endConnectionPoint>s1</endConnectionPoint>
  </connection>
@@ -85099,6 +85099,60 @@ parameters are a RESULT of the module parameters. -->
   </parameter>
   <startModule>clk_0</startModule>
   <startConnectionPoint>clk_reset</startConnectionPoint>
+  <endModule>onchip_memory2_0</endModule>
+  <endConnectionPoint>reset1</endConnectionPoint>
+ </connection>
+ <connection
+   name="hps_0_bridges.h2f_reset/clk_0.clk_in_reset"
+   kind="reset"
+   version="25.1"
+   start="hps_0_bridges.h2f_reset"
+   end="clk_0.clk_in_reset">
+  <parameter name="deviceFamily">
+   <type>java.lang.String</type>
+   <value>UNKNOWN</value>
+   <derived>false</derived>
+   <enabled>true</enabled>
+   <visible>true</visible>
+   <valid>true</valid>
+  </parameter>
+  <parameter name="generateLegacySim">
+   <type>boolean</type>
+   <value>false</value>
+   <derived>false</derived>
+   <enabled>true</enabled>
+   <visible>true</visible>
+   <valid>true</valid>
+  </parameter>
+  <startModule>hps_0_bridges</startModule>
+  <startConnectionPoint>h2f_reset</startConnectionPoint>
+  <endModule>clk_0</endModule>
+  <endConnectionPoint>clk_in_reset</endConnectionPoint>
+ </connection>
+ <connection
+   name="hps_0_bridges.h2f_reset/onchip_memory2_0.reset1"
+   kind="reset"
+   version="25.1"
+   start="hps_0_bridges.h2f_reset"
+   end="onchip_memory2_0.reset1">
+  <parameter name="deviceFamily">
+   <type>java.lang.String</type>
+   <value>UNKNOWN</value>
+   <derived>false</derived>
+   <enabled>true</enabled>
+   <visible>true</visible>
+   <valid>true</valid>
+  </parameter>
+  <parameter name="generateLegacySim">
+   <type>boolean</type>
+   <value>false</value>
+   <derived>false</derived>
+   <enabled>true</enabled>
+   <visible>true</visible>
+   <valid>true</valid>
+  </parameter>
+  <startModule>hps_0_bridges</startModule>
+  <startConnectionPoint>h2f_reset</startConnectionPoint>
   <endModule>onchip_memory2_0</endModule>
   <endConnectionPoint>reset1</endConnectionPoint>
  </connection>
@@ -85495,7 +85549,7 @@ parameters are a RESULT of the module parameters. -->
   <version>25.1</version>
  </plugin>
  <plugin>
-  <instanceCount>43</instanceCount>
+  <instanceCount>45</instanceCount>
   <name>reset</name>
   <type>com.altera.entityinterfaces.IElementClass</type>
   <subtype>com.altera.entityinterfaces.IConnection</subtype>

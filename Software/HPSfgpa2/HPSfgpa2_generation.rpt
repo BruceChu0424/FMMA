@@ -1,28 +1,3 @@
-Info: Starting: Create block symbol file (.bsf)
-Info: qsys-generate D:\Projects\OrCAD\FMMA\Software\HPSfgpa2.qsys --block-symbol-file --output-directory=D:\Projects\OrCAD\FMMA\Software\HPSfgpa2 --family="Cyclone V" --part=5CSEMA5F31C6
-Progress: Loading Software/HPSfgpa2.qsys
-Progress: Reading input file
-Progress: Adding clk_0 [clock_source 25.1]
-Progress: Parameterizing module clk_0
-Progress: Adding hps_0 [altera_hps 25.1]
-Progress: Parameterizing module hps_0
-Progress: Adding onchip_memory2_0 [altera_avalon_onchip_memory2 25.1]
-Progress: Parameterizing module onchip_memory2_0
-Progress: Building connections
-Progress: Parameterizing connections
-Progress: Validating
-Progress: Done reading input file
-Info: HPSfgpa2.hps_0: HPS Main PLL counter settings: n = 0  m = 73
-Info: HPSfgpa2.hps_0: HPS peripherial PLL counter settings: n = 0  m = 39
-Warning: HPSfgpa2.hps_0: "Configuration/HPS-to-FPGA user 0 clock frequency" (desired_cfg_clk_mhz) requested 100.0 MHz, but only achieved 97.368421 MHz
-Warning: HPSfgpa2.hps_0: 1 or more output clock frequencies cannot be achieved precisely, consider revising desired output clock frequencies.
-Warning: HPSfgpa2.hps_0: HPS model no longer supports simulation for HPS FPGA Bridges.
-Warning: HPSfgpa2.hps_0: ODT is disabled. Enabling ODT (Mode Register 1) may improve signal integrity
-Warning: HPSfgpa2.hps_0: set_interface_assignment: Interface "hps_io" does not exist
-Warning: HPSfgpa2.hps_0: hps_0.h2f_mpu_events must be exported, or connected to a matching conduit.
-Info: qsys-generate succeeded.
-Info: Finished: Create block symbol file (.bsf)
-Info: 
 Info: Starting: Create HDL design files for synthesis
 Info: qsys-generate D:\Projects\OrCAD\FMMA\Software\HPSfgpa2.qsys --synthesis=VERILOG --output-directory=D:\Projects\OrCAD\FMMA\Software\HPSfgpa2\synthesis --family="Cyclone V" --part=5CSEMA5F31C6
 Progress: Loading Software/HPSfgpa2.qsys
@@ -44,9 +19,9 @@ Warning: HPSfgpa2.hps_0: 1 or more output clock frequencies cannot be achieved p
 Warning: HPSfgpa2.hps_0: HPS model no longer supports simulation for HPS FPGA Bridges.
 Warning: HPSfgpa2.hps_0: ODT is disabled. Enabling ODT (Mode Register 1) may improve signal integrity
 Warning: HPSfgpa2.hps_0: set_interface_assignment: Interface "hps_io" does not exist
-Warning: HPSfgpa2.hps_0: hps_0.h2f_mpu_events must be exported, or connected to a matching conduit.
+Warning: HPSfgpa2.: You have exported the interface onchip_memory2_0.s2 but not its associated reset interface.  Export the driver(s) of onchip_memory2_0.reset1
 Info: HPSfgpa2: Generating "HPSfgpa2" for QUARTUS_SYNTH
-Info: Interconnect is inserted between master hps_0.h2f_axi_master and slave onchip_memory2_0.s1 because the master is of type axi and the slave is of type avalon.
+Info: Interconnect is inserted between master hps_0.h2f_lw_axi_master and slave onchip_memory2_0.s1 because the master is of type axi and the slave is of type avalon.
 Info: hps_0: "Running  for module: hps_0"
 Info: hps_0: HPS Main PLL counter settings: n = 0  m = 73
 Info: hps_0: HPS peripherial PLL counter settings: n = 0  m = 39
@@ -57,7 +32,7 @@ Warning: hps_0: ODT is disabled. Enabling ODT (Mode Register 1) may improve sign
 Warning: hps_0: set_interface_assignment: Interface "hps_io" does not exist
 Info: hps_0: "HPSfgpa2" instantiated altera_hps "hps_0"
 Info: onchip_memory2_0: Starting RTL generation for module 'HPSfgpa2_onchip_memory2_0'
-Info: onchip_memory2_0:   Generation command is [exec cmd /c {set LC_ALL=C&& D:/software/quartus/bin64/perl/bin/perl.exe -I D:/software/quartus/bin64/perl/lib -I D:/software/quartus/sopc_builder/bin/europa -I D:/software/quartus/sopc_builder/bin -I D:/software/quartus/../ip/altera/sopc_builder_ip/common -I D:/software/quartus/../ip/altera/sopc_builder_ip/altera_avalon_onchip_memory2 -- D:/software/quartus/../ip/altera/sopc_builder_ip/altera_avalon_onchip_memory2/generate_rtl.pl --name=HPSfgpa2_onchip_memory2_0 --dir=C:/Users/bruce/AppData/Local/Temp/alt0525_6186089092413061046.dir/0002_onchip_memory2_0_gen/ --quartus_dir=D:/software/quartus --verilog --config=C:/Users/bruce/AppData/Local/Temp/alt0525_6186089092413061046.dir/0002_onchip_memory2_0_gen//HPSfgpa2_onchip_memory2_0_component_configuration.pl --do_build_sim=0}]
+Info: onchip_memory2_0:   Generation command is [exec cmd /c {set LC_ALL=C&& D:/software/quartus/bin64/perl/bin/perl.exe -I D:/software/quartus/bin64/perl/lib -I D:/software/quartus/sopc_builder/bin/europa -I D:/software/quartus/sopc_builder/bin -I D:/software/quartus/../ip/altera/sopc_builder_ip/common -I D:/software/quartus/../ip/altera/sopc_builder_ip/altera_avalon_onchip_memory2 -- D:/software/quartus/../ip/altera/sopc_builder_ip/altera_avalon_onchip_memory2/generate_rtl.pl --name=HPSfgpa2_onchip_memory2_0 --dir=C:/Users/bruce/AppData/Local/Temp/alt0707_1653294358840396822.dir/0002_onchip_memory2_0_gen/ --quartus_dir=D:/software/quartus --verilog --config=C:/Users/bruce/AppData/Local/Temp/alt0707_1653294358840396822.dir/0002_onchip_memory2_0_gen//HPSfgpa2_onchip_memory2_0_component_configuration.pl --do_build_sim=0}]
 Info: onchip_memory2_0: Done RTL generation for module 'HPSfgpa2_onchip_memory2_0'
 Info: onchip_memory2_0: "HPSfgpa2" instantiated altera_avalon_onchip_memory2 "onchip_memory2_0"
 Info: avalon_st_adapter: Inserting error_adapter: error_adapter_0
@@ -66,7 +41,7 @@ Info: rst_controller: "HPSfgpa2" instantiated altera_reset_controller "rst_contr
 Info: fpga_interfaces: "hps_0" instantiated altera_interface_generator "fpga_interfaces"
 Info: hps_io: "hps_0" instantiated altera_hps_io "hps_io"
 Info: onchip_memory2_0_s1_translator: "mm_interconnect_0" instantiated altera_merlin_slave_translator "onchip_memory2_0_s1_translator"
-Info: hps_0_h2f_axi_master_agent: "mm_interconnect_0" instantiated altera_merlin_axi_master_ni "hps_0_h2f_axi_master_agent"
+Info: hps_0_h2f_lw_axi_master_agent: "mm_interconnect_0" instantiated altera_merlin_axi_master_ni "hps_0_h2f_lw_axi_master_agent"
 Info: onchip_memory2_0_s1_agent: "mm_interconnect_0" instantiated altera_merlin_slave_agent "onchip_memory2_0_s1_agent"
 Info: onchip_memory2_0_s1_agent_rsp_fifo: "mm_interconnect_0" instantiated altera_avalon_sc_fifo "onchip_memory2_0_s1_agent_rsp_fifo"
 Info: router: "mm_interconnect_0" instantiated altera_merlin_router "router"
@@ -78,19 +53,15 @@ Info: cmd_mux: "mm_interconnect_0" instantiated altera_merlin_multiplexer "cmd_m
 Info: rsp_demux: "mm_interconnect_0" instantiated altera_merlin_demultiplexer "rsp_demux"
 Info: rsp_mux: "mm_interconnect_0" instantiated altera_merlin_multiplexer "rsp_mux"
 Info: Reusing file D:/Projects/OrCAD/FMMA/Software/HPSfgpa2/synthesis/submodules/altera_merlin_arbitrator.sv
-Info: onchip_memory2_0_s1_rsp_width_adapter: "mm_interconnect_0" instantiated altera_merlin_width_adapter "onchip_memory2_0_s1_rsp_width_adapter"
-Info: Reusing file D:/Projects/OrCAD/FMMA/Software/HPSfgpa2/synthesis/submodules/altera_merlin_address_alignment.sv
-Info: Reusing file D:/Projects/OrCAD/FMMA/Software/HPSfgpa2/synthesis/submodules/altera_merlin_burst_uncompressor.sv
 Info: avalon_st_adapter: "mm_interconnect_0" instantiated altera_avalon_st_adapter "avalon_st_adapter"
 Error: border: Error during execution of script generate_hps_sdram.tcl: seq: Error during execution of "{D:/software/quartus/../nios2eds/Nios II Command Shell.bat} make all 2>> stderr.txt": child process exited abnormally
 Error: border: Error during execution of script generate_hps_sdram.tcl: seq: Execution of command "{D:/software/quartus/../nios2eds/Nios II Command Shell.bat} make all 2>> stderr.txt" failed
-Error: border: Error during execution of script generate_hps_sdram.tcl: seq: Nios II Command Shell.bat requires Windows Subsystem for Linux (WSL) to run.
-Error: border: Error during execution of script generate_hps_sdram.tcl: seq: Please install WSL and try again.
+Error: border: Error during execution of script generate_hps_sdram.tcl: seq: /mnt/d/software/quartus/bin64/uniphy_mcc.exe -ac_code sequencer_mc/ac_rom.s -inst_code sequencer_mc/inst_rom.s -ac_rom ../hps_AC_ROM.hex -inst_rom ../hps_inst_ROM.hex -header sequencer/sequencer_auto.h -vheader ../sequencer_auto_h.sv -ac_rom_init sequencer/sequencer_auto_ac_init.c -inst_rom_init sequencer/sequencer_auto_inst_init.c -DAC_ROM_USER_ADD_0=0_0000_0000_0000 -DAC_ROM_USER_ADD_1=0_0000_0000_1000 -DAC_ROM_MR0=0001000110001 -DAC_ROM_MR0_CALIB= -DAC_ROM_MR0_DLL_RESET=0001100110000 -DAC_ROM_MR1=0000000000000 -DAC_ROM_MR1_OCD_ENABLE= -DAC_ROM_MR2=0000000001000 -DAC_ROM_MR3=0000000000000 -DAC_ROM_MR0_MIRR=0001001001001 -DAC_ROM_MR0_DLL_RESET_MIRR=0001011001000 -DAC_ROM_MR1_MIRR=0000000000000 -DAC_ROM_MR2_MIRR=0000000010000 -DAC_ROM_MR3_MIRR=0000000000000 -DQUARTER_RATE=0 -DHALF_RATE=0 -DFULL_RATE=1 -DNON_DES_CAL=0 -DAP_MODE=0 -DGUARANTEED_READ_BRINGUP_TEST=0 -DMEM_ADDR_WIDTH=13 -DHARD_PHY=1
 Error: border: Error during execution of script generate_hps_sdram.tcl: seq: child process exited abnormally
-Error: border: Error during execution of script generate_hps_sdram.tcl: seq: add_fileset_file: No such file C:/Users/bruce/AppData/Local/Temp/alt0525_6273395595732005975.dir/0004_seq_gen/hps_AC_ROM.hex
+Error: border: Error during execution of script generate_hps_sdram.tcl: seq: add_fileset_file: No such file C:/Users/bruce/AppData/Local/Temp/alt0707_4742354506992092289.dir/0004_seq_gen/hps_AC_ROM.hex
 Error: border: Error during execution of script generate_hps_sdram.tcl: Generation stopped, 3 or more modules remaining
 Error: border: Execution of script generate_hps_sdram.tcl failed
-Error: border: 2026.03.12.19:52:06 Info:
+Error: border: 2026.09.11.10:54:01 Info:
 Error: border: ********************************************************************************************************************
 Error: border: 
 Error: border: Use qsys-generate for a simpler command-line interface for generating IP.
@@ -98,36 +69,35 @@ Error: border:
 Error: border: Run ip-generate with switch --remove-qsys-generate-warning to prevent this notice from appearing in subsequent runs.
 Error: border: 
 Error: border: ********************************************************************************************************************
-Error: border: 2026.03.12.19:52:08 Warning: Ignored parameter assignment device=5CSEMA5F31C6
-Error: border: 2026.03.12.19:52:08 Warning: Ignored parameter assignment extended_family_support=true
-Error: border: 2026.03.12.19:52:10 Warning: hps_sdram: ODT is disabled. Enabling ODT (Mode Register 1) may improve signal integrity
-Error: border: 2026.03.12.19:52:10 Warning: hps_sdram: 'Quick' simulation modes are NOT timing accurate. Some simulation memory models may issue warnings or errors
-Error: border: 2026.03.12.19:52:10 Warning: hps_sdram.seq: This module has no ports or interfaces
-Error: border: 2026.03.12.19:52:10 Warning: hps_sdram.c0: ODT is disabled. Enabling ODT (Mode Register 1) may improve signal integrity
-Error: border: 2026.03.12.19:52:10 Warning: hps_sdram.p0: p0.scc must be exported, or connected to a matching conduit.
-Error: border: 2026.03.12.19:52:10 Warning: hps_sdram.as: as.afi_init_cal_req must be exported, or connected to a matching conduit.
-Error: border: 2026.03.12.19:52:10 Warning: hps_sdram.as: as.tracking must be exported, or connected to a matching conduit.
-Error: border: 2026.03.12.19:52:10 Warning: hps_sdram.c0: c0.status must be exported, or connected to a matching conduit.
-Error: border: 2026.03.12.19:52:10 Warning: hps_sdram.p0: p0.avl must be connected to an Avalon-MM master
-Error: border: 2026.03.12.19:52:10 Info: hps_sdram: Generating "hps_sdram" for QUARTUS_SYNTH
-Error: border: 2026.03.12.19:52:12 Info: pll: "hps_sdram" instantiated altera_mem_if_hps_pll "pll"
-Error: border: 2026.03.12.19:52:12 Info: p0: Generating clock pair generator
-Error: border: 2026.03.12.19:52:13 Info: p0: Generating hps_sdram_p0_altdqdqs
-Error: border: 2026.03.12.19:52:17 Info: p0:
-Error: border: 2026.03.12.19:52:17 Info: p0: *****************************
-Error: border: 2026.03.12.19:52:17 Info: p0:
-Error: border: 2026.03.12.19:52:17 Info: p0: Remember to run the hps_sdram_p0_pin_assignments.tcl
-Error: border: 2026.03.12.19:52:17 Info: p0: script after running Synthesis and before Fitting.
-Error: border: 2026.03.12.19:52:17 Info: p0:
-Error: border: 2026.03.12.19:52:17 Info: p0: *****************************
-Error: border: 2026.03.12.19:52:17 Info: p0:
-Error: border: 2026.03.12.19:52:17 Info: p0: "hps_sdram" instantiated altera_mem_if_ddr3_hard_phy_core "p0"
-Error: border: 2026.03.12.19:52:17 Error: seq: Error during execution of "{D:/software/quartus/../nios2eds/Nios II Command Shell.bat} make all 2>> stderr.txt": child process exited abnormally
-Error: border: 2026.03.12.19:52:17 Error: seq: Execution of command "{D:/software/quartus/../nios2eds/Nios II Command Shell.bat} make all 2>> stderr.txt" failed
-Error: border: 2026.03.12.19:52:17 Error: seq: Nios II Command Shell.bat requires Windows Subsystem for Linux (WSL) to run.
-Error: border: 2026.03.12.19:52:17 Error: seq: Please install WSL and try again.
-Error: border: 2026.03.12.19:52:17 Error: seq: child process exited abnormally
-Error: border: 2026.03.12.19:52:17 Error: seq: add_fileset_file: No such file C:/Users/bruce/AppData/Local/Temp/alt0525_6273395595732005975.dir/0004_seq_gen/hps_AC_ROM.hex
+Error: border: 2026.09.11.10:54:05 Warning: Ignored parameter assignment device=5CSEMA5F31C6
+Error: border: 2026.09.11.10:54:05 Warning: Ignored parameter assignment extended_family_support=true
+Error: border: 2026.09.11.10:54:12 Warning: hps_sdram: ODT is disabled. Enabling ODT (Mode Register 1) may improve signal integrity
+Error: border: 2026.09.11.10:54:12 Warning: hps_sdram: 'Quick' simulation modes are NOT timing accurate. Some simulation memory models may issue warnings or errors
+Error: border: 2026.09.11.10:54:12 Warning: hps_sdram.seq: This module has no ports or interfaces
+Error: border: 2026.09.11.10:54:12 Warning: hps_sdram.c0: ODT is disabled. Enabling ODT (Mode Register 1) may improve signal integrity
+Error: border: 2026.09.11.10:54:12 Warning: hps_sdram.p0: p0.scc must be exported, or connected to a matching conduit.
+Error: border: 2026.09.11.10:54:12 Warning: hps_sdram.as: as.afi_init_cal_req must be exported, or connected to a matching conduit.
+Error: border: 2026.09.11.10:54:12 Warning: hps_sdram.as: as.tracking must be exported, or connected to a matching conduit.
+Error: border: 2026.09.11.10:54:12 Warning: hps_sdram.c0: c0.status must be exported, or connected to a matching conduit.
+Error: border: 2026.09.11.10:54:12 Warning: hps_sdram.p0: p0.avl must be connected to an Avalon-MM master
+Error: border: 2026.09.11.10:54:12 Info: hps_sdram: Generating "hps_sdram" for QUARTUS_SYNTH
+Error: border: 2026.09.11.10:54:17 Info: pll: "hps_sdram" instantiated altera_mem_if_hps_pll "pll"
+Error: border: 2026.09.11.10:54:17 Info: p0: Generating clock pair generator
+Error: border: 2026.09.11.10:54:17 Info: p0: Generating hps_sdram_p0_altdqdqs
+Error: border: 2026.09.11.10:54:23 Info: p0:
+Error: border: 2026.09.11.10:54:23 Info: p0: *****************************
+Error: border: 2026.09.11.10:54:23 Info: p0:
+Error: border: 2026.09.11.10:54:23 Info: p0: Remember to run the hps_sdram_p0_pin_assignments.tcl
+Error: border: 2026.09.11.10:54:23 Info: p0: script after running Synthesis and before Fitting.
+Error: border: 2026.09.11.10:54:23 Info: p0:
+Error: border: 2026.09.11.10:54:23 Info: p0: *****************************
+Error: border: 2026.09.11.10:54:23 Info: p0:
+Error: border: 2026.09.11.10:54:23 Info: p0: "hps_sdram" instantiated altera_mem_if_ddr3_hard_phy_core "p0"
+Error: border: 2026.09.11.10:54:23 Error: seq: Error during execution of "{D:/software/quartus/../nios2eds/Nios II Command Shell.bat} make all 2>> stderr.txt": child process exited abnormally
+Error: border: 2026.09.11.10:54:23 Error: seq: Execution of command "{D:/software/quartus/../nios2eds/Nios II Command Shell.bat} make all 2>> stderr.txt" failed
+Error: border: 2026.09.11.10:54:23 Error: seq: /mnt/d/software/quartus/bin64/uniphy_mcc.exe -ac_code sequencer_mc/ac_rom.s -inst_code sequencer_mc/inst_rom.s -ac_rom ../hps_AC_ROM.hex -inst_rom ../hps_inst_ROM.hex -header sequencer/sequencer_auto.h -vheader ../sequencer_auto_h.sv -ac_rom_init sequencer/sequencer_auto_ac_init.c -inst_rom_init sequencer/sequencer_auto_inst_init.c -DAC_ROM_USER_ADD_0=0_0000_0000_0000 -DAC_ROM_USER_ADD_1=0_0000_0000_1000 -DAC_ROM_MR0=0001000110001 -DAC_ROM_MR0_CALIB= -DAC_ROM_MR0_DLL_RESET=0001100110000 -DAC_ROM_MR1=0000000000000 -DAC_ROM_MR1_OCD_ENABLE= -DAC_ROM_MR2=0000000001000 -DAC_ROM_MR3=0000000000000 -DAC_ROM_MR0_MIRR=0001001001001 -DAC_ROM_MR0_DLL_RESET_MIRR=0001011001000 -DAC_ROM_MR1_MIRR=0000000000000 -DAC_ROM_MR2_MIRR=0000000010000 -DAC_ROM_MR3_MIRR=0000000000000 -DQUARTER_RATE=0 -DHALF_RATE=0 -DFULL_RATE=1 -DNON_DES_CAL=0 -DAP_MODE=0 -DGUARANTEED_READ_BRINGUP_TEST=0 -DMEM_ADDR_WIDTH=13 -DHARD_PHY=1
+Error: border: 2026.09.11.10:54:23 Error: seq: child process exited abnormally
+Error: border: 2026.09.11.10:54:23 Error: seq: add_fileset_file: No such file C:/Users/bruce/AppData/Local/Temp/alt0707_4742354506992092289.dir/0004_seq_gen/hps_AC_ROM.hex
 Error: border: while executing
 Error: border: "add_fileset_file $file_name [::alt_mem_if::util::hwtcl_utils::get_file_type $file_name 0] PATH $file_pathname"
 Error: border: ("foreach" body line 4)
@@ -150,11 +120,11 @@ Error: border: "generate_files $name QUARTUS_SYNTH"
 Error: border: (procedure "generate_synth" line 3)
 Error: border: invoked from within
 Error: border: "generate_synth altera_mem_if_hhp_qseq_synth_top"
-Error: border: 2026.03.12.19:52:17 Info: seq: "hps_sdram" instantiated altera_mem_if_hhp_ddr3_qseq "seq"
-Error: border: 2026.03.12.19:52:17 Error: Generation stopped, 3 or more modules remaining
-Error: border: 2026.03.12.19:52:17 Info: hps_sdram: Done "hps_sdram" with 7 modules, 33 files
+Error: border: 2026.09.11.10:54:23 Info: seq: "hps_sdram" instantiated altera_mem_if_hhp_ddr3_qseq "seq"
+Error: border: 2026.09.11.10:54:23 Error: Generation stopped, 3 or more modules remaining
+Error: border: 2026.09.11.10:54:23 Info: hps_sdram: Done "hps_sdram" with 7 modules, 33 files
 Info: border: "hps_io" instantiated altera_interface_generator "border"
 Error: Generation stopped, 1 or more modules remaining
-Info: HPSfgpa2: Done "HPSfgpa2" with 22 modules, 69 files
-Error: qsys-generate failed with exit code 1: 72 Errors, 11 Warnings
+Info: HPSfgpa2: Done "HPSfgpa2" with 21 modules, 68 files
+Error: qsys-generate failed with exit code 1: 70 Errors, 11 Warnings
 Info: Finished: Create HDL design files for synthesis

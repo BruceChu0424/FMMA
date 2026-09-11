@@ -1,30 +1,33 @@
 	component HPSfgpa2 is
 		port (
-			bram_out_address    : in    std_logic_vector(9 downto 0)  := (others => 'X'); -- address
-			bram_out_chipselect : in    std_logic                     := 'X';             -- chipselect
-			bram_out_clken      : in    std_logic                     := 'X';             -- clken
-			bram_out_write      : in    std_logic                     := 'X';             -- write
-			bram_out_readdata   : out   std_logic_vector(31 downto 0);                    -- readdata
-			bram_out_writedata  : in    std_logic_vector(31 downto 0) := (others => 'X'); -- writedata
-			bram_out_byteenable : in    std_logic_vector(3 downto 0)  := (others => 'X'); -- byteenable
-			clk_clk             : in    std_logic                     := 'X';             -- clk
-			memory_mem_a        : out   std_logic_vector(12 downto 0);                    -- mem_a
-			memory_mem_ba       : out   std_logic_vector(2 downto 0);                     -- mem_ba
-			memory_mem_ck       : out   std_logic;                                        -- mem_ck
-			memory_mem_ck_n     : out   std_logic;                                        -- mem_ck_n
-			memory_mem_cke      : out   std_logic;                                        -- mem_cke
-			memory_mem_cs_n     : out   std_logic;                                        -- mem_cs_n
-			memory_mem_ras_n    : out   std_logic;                                        -- mem_ras_n
-			memory_mem_cas_n    : out   std_logic;                                        -- mem_cas_n
-			memory_mem_we_n     : out   std_logic;                                        -- mem_we_n
-			memory_mem_reset_n  : out   std_logic;                                        -- mem_reset_n
-			memory_mem_dq       : inout std_logic_vector(7 downto 0)  := (others => 'X'); -- mem_dq
-			memory_mem_dqs      : inout std_logic                     := 'X';             -- mem_dqs
-			memory_mem_dqs_n    : inout std_logic                     := 'X';             -- mem_dqs_n
-			memory_mem_odt      : out   std_logic;                                        -- mem_odt
-			memory_mem_dm       : out   std_logic;                                        -- mem_dm
-			memory_oct_rzqin    : in    std_logic                     := 'X';             -- oct_rzqin
-			reset_reset_n       : in    std_logic                     := 'X'              -- reset_n
+			clk_clk                         : in    std_logic                     := 'X';             -- clk
+			fpga_bram_s2_address            : in    std_logic_vector(9 downto 0)  := (others => 'X'); -- address
+			fpga_bram_s2_chipselect         : in    std_logic                     := 'X';             -- chipselect
+			fpga_bram_s2_clken              : in    std_logic                     := 'X';             -- clken
+			fpga_bram_s2_write              : in    std_logic                     := 'X';             -- write
+			fpga_bram_s2_readdata           : out   std_logic_vector(31 downto 0);                    -- readdata
+			fpga_bram_s2_writedata          : in    std_logic_vector(31 downto 0) := (others => 'X'); -- writedata
+			fpga_bram_s2_byteenable         : in    std_logic_vector(3 downto 0)  := (others => 'X'); -- byteenable
+			hps_0_h2f_mpu_events_eventi     : in    std_logic                     := 'X';             -- eventi
+			hps_0_h2f_mpu_events_evento     : out   std_logic;                                        -- evento
+			hps_0_h2f_mpu_events_standbywfe : out   std_logic_vector(1 downto 0);                     -- standbywfe
+			hps_0_h2f_mpu_events_standbywfi : out   std_logic_vector(1 downto 0);                     -- standbywfi
+			memory_mem_a                    : out   std_logic_vector(12 downto 0);                    -- mem_a
+			memory_mem_ba                   : out   std_logic_vector(2 downto 0);                     -- mem_ba
+			memory_mem_ck                   : out   std_logic;                                        -- mem_ck
+			memory_mem_ck_n                 : out   std_logic;                                        -- mem_ck_n
+			memory_mem_cke                  : out   std_logic;                                        -- mem_cke
+			memory_mem_cs_n                 : out   std_logic;                                        -- mem_cs_n
+			memory_mem_ras_n                : out   std_logic;                                        -- mem_ras_n
+			memory_mem_cas_n                : out   std_logic;                                        -- mem_cas_n
+			memory_mem_we_n                 : out   std_logic;                                        -- mem_we_n
+			memory_mem_reset_n              : out   std_logic;                                        -- mem_reset_n
+			memory_mem_dq                   : inout std_logic_vector(7 downto 0)  := (others => 'X'); -- mem_dq
+			memory_mem_dqs                  : inout std_logic                     := 'X';             -- mem_dqs
+			memory_mem_dqs_n                : inout std_logic                     := 'X';             -- mem_dqs_n
+			memory_mem_odt                  : out   std_logic;                                        -- mem_odt
+			memory_mem_dm                   : out   std_logic;                                        -- mem_dm
+			memory_oct_rzqin                : in    std_logic                     := 'X'              -- oct_rzqin
 		);
 	end component HPSfgpa2;
 

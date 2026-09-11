@@ -25,6 +25,14 @@
          type = "int";
       }
    }
+   element hps_0.h2f_lw_axi_clock
+   {
+      datum _tags
+      {
+         value = "";
+         type = "String";
+      }
+   }
    element onchip_memory2_0
    {
       datum _sortIndex
@@ -62,14 +70,18 @@
  <parameter name="timeStamp" value="0" />
  <parameter name="useTestBenchNamingPattern" value="false" />
  <instanceScript></instanceScript>
+ <interface name="clk" internal="clk_0.clk_in" type="clock" dir="end" />
  <interface
-   name="bram_out"
+   name="fpga_bram_s2"
    internal="onchip_memory2_0.s2"
    type="avalon"
    dir="end" />
- <interface name="clk" internal="clk_0.clk_in" type="clock" dir="end" />
+ <interface
+   name="hps_0_h2f_mpu_events"
+   internal="hps_0.h2f_mpu_events"
+   type="conduit"
+   dir="end" />
  <interface name="memory" internal="hps_0.memory" type="conduit" dir="end" />
- <interface name="reset" internal="clk_0.clk_in_reset" type="reset" dir="end" />
  <module name="clk_0" kind="clock_source" version="25.1" enabled="1">
   <parameter name="clockFrequency" value="50000000" />
   <parameter name="clockFrequencyKnown" value="true" />
@@ -641,7 +653,7 @@
  <connection
    kind="avalon"
    version="25.1"
-   start="hps_0.h2f_axi_master"
+   start="hps_0.h2f_lw_axi_master"
    end="onchip_memory2_0.s1">
   <parameter name="arbitrationPriority" value="1" />
   <parameter name="baseAddress" value="0x0000" />
@@ -676,6 +688,16 @@
    kind="reset"
    version="25.1"
    start="clk_0.clk_reset"
+   end="onchip_memory2_0.reset1" />
+ <connection
+   kind="reset"
+   version="25.1"
+   start="hps_0.h2f_reset"
+   end="clk_0.clk_in_reset" />
+ <connection
+   kind="reset"
+   version="25.1"
+   start="hps_0.h2f_reset"
    end="onchip_memory2_0.reset1" />
  <interconnectRequirement for="$system" name="qsys_mm.clockCrossingAdapter" value="HANDSHAKE" />
  <interconnectRequirement for="$system" name="qsys_mm.enableEccProtection" value="FALSE" />

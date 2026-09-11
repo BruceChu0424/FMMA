@@ -15,7 +15,9 @@ input [9:0] in;
 input rst, clk, enable;
 
 // An output for the out value
-output reg [9:0] out;
+// Power-up value 8: the trading program starts at
+// word address 8 (words 0..7 stay zero/reserved).
+output reg [9:0] out = 10'b0000001000;
 
 // Always run of the negative edge of the clock
 	always @(negedge clk)

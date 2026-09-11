@@ -1,12 +1,5 @@
 
 module HPSfgpa2 (
-	bram_out_address,
-	bram_out_chipselect,
-	bram_out_clken,
-	bram_out_write,
-	bram_out_readdata,
-	bram_out_writedata,
-	bram_out_byteenable,
 	clk_clk,
 	memory_mem_a,
 	memory_mem_ba,
@@ -24,15 +17,18 @@ module HPSfgpa2 (
 	memory_mem_odt,
 	memory_mem_dm,
 	memory_oct_rzqin,
-	reset_reset_n);	
+	hps_0_h2f_mpu_events_eventi,
+	hps_0_h2f_mpu_events_evento,
+	hps_0_h2f_mpu_events_standbywfe,
+	hps_0_h2f_mpu_events_standbywfi,
+	fpga_bram_s2_address,
+	fpga_bram_s2_chipselect,
+	fpga_bram_s2_clken,
+	fpga_bram_s2_write,
+	fpga_bram_s2_readdata,
+	fpga_bram_s2_writedata,
+	fpga_bram_s2_byteenable);	
 
-	input	[9:0]	bram_out_address;
-	input		bram_out_chipselect;
-	input		bram_out_clken;
-	input		bram_out_write;
-	output	[31:0]	bram_out_readdata;
-	input	[31:0]	bram_out_writedata;
-	input	[3:0]	bram_out_byteenable;
 	input		clk_clk;
 	output	[12:0]	memory_mem_a;
 	output	[2:0]	memory_mem_ba;
@@ -50,5 +46,15 @@ module HPSfgpa2 (
 	output		memory_mem_odt;
 	output		memory_mem_dm;
 	input		memory_oct_rzqin;
-	input		reset_reset_n;
+	input		hps_0_h2f_mpu_events_eventi;
+	output		hps_0_h2f_mpu_events_evento;
+	output	[1:0]	hps_0_h2f_mpu_events_standbywfe;
+	output	[1:0]	hps_0_h2f_mpu_events_standbywfi;
+	input	[9:0]	fpga_bram_s2_address;
+	input		fpga_bram_s2_chipselect;
+	input		fpga_bram_s2_clken;
+	input		fpga_bram_s2_write;
+	output	[31:0]	fpga_bram_s2_readdata;
+	input	[31:0]	fpga_bram_s2_writedata;
+	input	[3:0]	fpga_bram_s2_byteenable;
 endmodule
