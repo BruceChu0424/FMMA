@@ -35,10 +35,18 @@ transcript
 Testbenches/work/
 Testbenches/build/
 
-# HPS build products (the binary is built on the board)
+# HPS build products.  marketstream is cross-built (tools/crossbuild.sh),
+# the two diagnostics build either on the board or in the cross image -
+# all three are ARM binaries and none of them belongs in the history.
 Software/marketstream
 Software/market
+Software/fmma-probe
+Software/fmma-bench
+Software/fmma-unittest
 Software/*.o
+
+# Measurement output from fmma-bench --csv
+Software/*.csv
 
 # Python
 __pycache__/

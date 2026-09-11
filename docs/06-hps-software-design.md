@@ -208,12 +208,20 @@ reading of them.
 `--no-fpga` also makes the whole program runnable on a laptop, which is
 how the feed and the broker path were developed without a board.
 
-## 6.10 The probe
+## 6.10 The two diagnostics
 
-`fmma-probe` is a separate, tiny program that depends on nothing but
-libc. It builds in a second on the board and works before the main
-application does, which makes it the right first thing to run during
-bring-up and the right first thing to reach for when something is wrong.
+`marketstream` needs TLS, and TLS is exactly what cannot be built on the
+board (§10.4). So the two programs used for bring-up and measurement
+link against **libc only**: they build on the board in about a second
+and work before the main application does — and, more to the point,
+when it does not.
+
+Both are thin drivers over the same modules `marketstream` uses. Neither
+duplicates protocol logic; `fmma-bench` in particular calls the same
+`fmma_fpga.c` the application calls, so a bench result says something
+about the shipping code path rather than a parallel one.
+
+### `fmma-probe` — is our design in the fabric?
 
 ```
 fmma-probe             summarise the protocol block
@@ -221,6 +229,7 @@ fmma-probe watch       follow the heartbeat, position and signals
 fmma-probe ramtest     prove the window really is our shared RAM
 fmma-probe dump [n]    hex dump
 fmma-probe read/write  poke individual words
+fmma-probe --force     map without the fabric-state check
 ```
 
 `ramtest` is the useful one: it writes unique values and walking ones
@@ -228,6 +237,42 @@ into the free region above the protocol block and reads them back. A
 PIO register block — which is what the stock DE1-SoC reference design
 puts at this address — fails it immediately, so it answers "is *our*
 design in the fabric?" without needing to see the board.
+
+Every subcommand asks the FPGA manager whether the fabric is configured
+before mapping anything (§6.4). The probe is the tool most likely to be
+pointed at a board in a bad state, and an access to an unconfigured
+bridge hangs the board with no software recovery — so the check being
+here matters more than it does anywhere else. `--force` removes it for
+the case where the state genuinely cannot be read.
+
+### `fmma-bench` — how fast is it, and is it right?
+
+```
+fmma-bench                          1000 quotes, 1 ms apart
+fmma-bench --ticks 5000 --interval 300
+fmma-bench --no-load                keep the running program
+fmma-bench --csv lat.csv            one line per sample
+```
+
+It loads the program, drives a synthetic quote series built to trade on
+every tick, busy-polls for each answer and times the round trip. Busy,
+not sleeping: a sleep would quantise the result to the scheduler tick
+and swamp the thing being measured.
+
+Two design choices make its output worth more than a latency number:
+
+* It runs **the same quotes through `fmma_strategy.c`** and compares the
+  side the fabric chose against the side the C model chose, on every
+  sample. A run that reports latency has also just re-verified
+  hardware/software equivalence over thousands of quotes.
+* The series is **synthetic and deterministic**, so the measurement is
+  repeatable and does not depend on the exchange happening to move.
+
+It reports the fabric round trip and the ARM core's time for the same
+arithmetic side by side, and prints a short note explaining that the two
+are not competing numbers — because they are easy to misread, and a
+figure printed without that caveat will eventually be quoted without it.
+[14](14-latency-and-performance.md) §14.5 has the measured results.
 
 ## 6.11 Operational behaviour
 

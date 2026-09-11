@@ -1,0 +1,53 @@
+# Reproducible cross-build of the HPS application for the DE1-SoC.
+#
+# Why this exists
+# ---------------
+# The DE1-SoC images in circulation are Ubuntu 12.04 armhf: gcc 4.6,
+# glibc 2.15, and - the part that actually blocks the build - libssl.so
+# without the headers that go with it.  Their archives are long past end
+# of life, so `apt-get install libssl-dev` on the board cannot work.
+#
+# Two ways out.  Cross-compiling from a current Debian is the one that
+# is quick and repeatable; emulating armhf under QEMU also works but is
+# slow and needs binfmt registered on the host.
+#
+# Linking statically
+# ------------------
+# The toolchain here has glibc 2.36 and the board has 2.15, so a
+# dynamically linked binary would not start: the loader would ask for
+# symbol versions the board has never heard of.  Static linking removes
+# the question.  Kernel 3.13 on the board is comfortably above the
+# minimum a bookworm static binary expects.
+#
+# Static glibc normally breaks name resolution, because getaddrinfo
+# loads NSS plugins at run time and a static binary has nowhere to load
+# them from.  It does not break here: mongoose resolves names itself
+# over UDP and never calls getaddrinfo.  That is worth knowing before
+# anyone "fixes" the DNS code.
+#
+#   docker build -t fmma-armhf -f tools/Dockerfile.armhf tools
+#   docker run --rm -v "$PWD:/src" -w /src/Software fmma-armhf \
+#          make static CC=arm-linux-gnueabihf-gcc
+#
+# tools/crossbuild.sh does both steps.
+
+FROM debian:bookworm
+
+# armhf is a foreign architecture here; we want its libraries, not its
+# binaries, so only the library packages come from it.
+RUN dpkg --add-architecture armhf \
+ && apt-get update -qq \
+ && apt-get install -y --no-install-recommends \
+        make \
+        crossbuild-essential-armhf \
+        libssl-dev:armhf \
+        ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Both the compiler driver and pkg-config need to look in the armhf
+# tree rather than the host's.
+ENV CC=arm-linux-gnueabihf-gcc \
+    PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig \
+    PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig
+
+WORKDIR /src

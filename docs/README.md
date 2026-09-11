@@ -40,7 +40,9 @@ Tooling worth knowing about:
 | [`../Testbenches/run_sim.sh`](../Testbenches/run_sim.sh) | the whole off-board regression suite, 25 seconds |
 | [`../tools/boardctl.py`](../tools/boardctl.py) | a scriptable serial console for the board |
 | [`../tools/deploy.py`](../tools/deploy.py) | one command per bring-up step: network, FPGA, push, build, probe, run |
+| [`../tools/crossbuild.sh`](../tools/crossbuild.sh) | static armhf cross-build — the only way to build `marketstream` |
 | `Software/src/fmma_probe.c` | `fmma-probe`, the on-board HPS/FPGA link diagnostic |
+| `Software/src/fmma_bench.c` | `fmma-bench`, the hardware-in-the-loop latency harness |
 | [`../Software/protocol.py`](../Software/protocol.py) | the memory map; generates the C, assembly and Verilog copies |
 | [`../Software/fmma_sim.py`](../Software/fmma_sim.py) | the golden-reference instruction set simulator |
 

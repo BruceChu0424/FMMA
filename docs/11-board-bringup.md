@@ -257,37 +257,66 @@ This is the first thing that touches the bridge, which is why it comes
 after the `HEX0` check and why it only writes to the free region above
 the protocol block.
 
-## 11.6 Build the application on the board
+## 11.6 Measure the fabric before involving the network
+
+Before any of TLS, DNS, the exchange or the broker is in the picture,
+`fmma-bench` exercises the entire protocol against a synthetic quote
+series and tells you whether the CPU is running and how fast:
 
 ```bash
-python tools/deploy.py build
+python tools/deploy.py build bench
+python tools/boardctl.py run "cd /root/fmma && ./fmma-bench --ticks 5000 --interval 300"
 ```
 
-or, on the board:
+Expected — these are the figures measured on a working board:
+
+```
+info  fpga   CPU running: protocol v2, heartbeat 128311, position 0
+info  bench  CPU idle loop rate: 1282155 loops/s (0.8 us per loop)
+
+fabric decision latency, 5000 samples
+  min        3 us
+  mean       5 us
+  p99       16 us
+  max       17 us
+
+ticks published   5000
+decisions read    5000
+unanswered        0
+side mismatches   0
+```
+
+Two rows carry most of the value. **`unanswered 0`** means the CPU
+answered every quote — the loop is running and the seqlock is working.
+**`side mismatches 0`** means the assembly in the fabric and the C model
+in `fmma_strategy.c` chose the same side on all 5 000 quotes, which is
+hardware/software equivalence checked on silicon rather than in
+simulation.
+
+If `unanswered` equals the tick count, the CPU is not executing: check
+`fmma-probe` for `FW_VERSION 0`, then §15.
+
+## 11.7 Build the application
+
+`marketstream` **cannot be built on the board.** The stock image ships
+`libssl.so` without its headers, and its Ubuntu 12.04 archives have
+been retired, so `libssl-dev` cannot be installed. This is confirmed,
+not assumed.
 
 ```bash
-cd /root/fmma && make
+tools/crossbuild.sh                   # static armhf; first run takes minutes
+python tools/deploy.py pushbin        # copy the binaries over
 ```
 
-This needs `libssl-dev`. If the image does not have it and cannot
-install it — which is the case for the older images, whose
-distributions are long past end of life — use §11.7 instead.
-
-## 11.7 Cross-compile, if the board cannot build it
+The two diagnostics do build on the board, in about a second each,
+because they depend on nothing but libc:
 
 ```bash
-docker run --rm -v "$PWD:/work" -w /work/Software \
-  debian:bookworm-slim bash -c '
-    dpkg --add-architecture armhf && apt-get update -qq &&
-    apt-get install -y -qq crossbuild-essential-armhf libssl-dev:armhf &&
-    make CC=arm-linux-gnueabihf-gcc static'
-python tools/deploy.py push        # then copy the binaries over
+python tools/deploy.py build probe    # or: cd /root/fmma && make probe bench
 ```
 
-`make static` links everything, including OpenSSL, into the binary, so
-it does not care what the board's distribution has. Static glibc would
-normally break name resolution, but it does not here: mongoose
-resolves DNS itself over UDP and never calls `getaddrinfo`.
+See [10](10-build-guide.md) §10.4a for why the cross-build must be
+static and which linker warnings are expected.
 
 ## 11.8 Credentials
 
@@ -313,22 +342,28 @@ vanish.
 
 Expected:
 
+Actual output from a working board (threshold lowered to $2.00 so a
+decision appears within seconds rather than minutes):
+
 ```
 === FMMA: BTC-USD -> FPGA -> paper trading (protocol v2) ===
-[     0.001] info  config   product BTC-USD, symbol BTCUSD, qty 0.001
-[     0.001] WARN  config   DRY RUN: no orders will be sent
-[     0.002] info  tls      verifying certificates against /etc/ssl/certs/ca-certificates.crt
-[     0.003] info  fpga     shared RAM mapped at 0xFF200000, 1024 words
-[     0.004] info  fpga     disabling trading while the image is replaced
-[     0.011] info  fpga     writing 154 program words at word 8, entry word last
-[     0.019] info  fpga     program verified
-[     0.020] info  fpga     waiting for the CPU
-[     0.121] info  fpga     CPU running: protocol v2, heartbeat 128341, position 0
-[     0.121] info  app      trading enabled in the fabric
-[     0.402] info  feed     connected, subscribed to BTC-USD ticker
-[     1.233] debug feed     bid 97431.02  ask 97431.98
-[     3.891] info  app      >>> FPGA BUY  (tick 8, 812 us after the quote, fabric position 0)
-[     3.891] info  exec     dry run: would send buy 0.001 BTCUSD
+[     0.000] info  config   product BTC-USD, symbol BTCUSD, qty 0.001
+[     0.000] WARN  config   DRY RUN: no orders will be sent
+[     0.000] info  tls      verifying certificates against /etc/ssl/certs/ca-certificates.crt
+[     0.000] info  fpga     shared RAM mapped at 0xFF200000, 1024 words
+[     0.000] info  fpga     disabling trading while the image is replaced
+[     0.000] info  fpga     writing 154 program words at word 8, entry word last
+[     0.000] info  fpga     program verified
+[     0.000] info  fpga     waiting for the CPU
+[     0.101] info  fpga     CPU running: protocol v2, heartbeat 128337, position 0
+[     0.101] info  app      trading enabled in the fabric
+[     0.852] info  feed     connected, subscribed to BTC-USD ticker
+[     0.984] info  app      >>> FPGA SELL  (tick 10104, 5 us after the quote, fabric position 0)
+[     0.984] info  exec     dry run: would send sell 0.001 BTCUSD
+[     1.666] info  app      >>> FPGA SELL  (tick 10110, 5 us after the quote, fabric position 0)
+[     1.666] info  exec     cooldown active, dropping sell
+[     8.482] info  app      >>> FPGA BUY   (tick 10192, 32 us after the quote, fabric position 0)
+[     8.482] info  exec     dry run: would send buy 0.001 BTCUSD
 ```
 
 Checks, in order:
@@ -344,25 +379,43 @@ Checks, in order:
 
 `HEX0` should now be flickering rather than steady.
 
+`cooldown active, dropping sell` is not an error: the strategy can
+signal several times a second and `--cooldown` (1 s by default) keeps
+the order rate inside the broker's limits. The fabric is not throttled —
+only the execution path is.
+
 ## 11.10 Live paper trading
 
 ```bash
 sudo -E ./marketstream --max-pos 3 --threshold 1000 --max-loss 5000 --stats 30
 ```
 
+The order lines look like this — these four are illustrative, because
+the runs recorded in [13](13-test-report.md) §13.5 were all `--dry-run`
+pending a key rotation:
+
 ```
 [    41.2] info  exec     sent buy 0.001 BTCUSD
 [    41.3] info  exec     accepted (HTTP 200) id 9f3c... status accepted
 [    41.8] info  exec     filled buy 1 @ 9743107 after 512 ms
 [    41.8] info  risk     fill buy 1 @ 9743107 -> position 1, avg 9743107, realised 0
-
---- 30 s ---------------------------------------------
-  ticks 142   signals 3   orders 3 sent / 3 filled / 0 rejected
-  quote -> decision seen:  min 786 us   mean 941 us   p99 2048 us   max 1203 us
-  position 1 lots @ 9743107   P&L realised 0  unrealised -240  total -240
-  fabric: position 1   rejects 0   status 0x1   38472911 loops since the last report
-  feed: connected   orders working: 0
 ```
+
+The statistics block is real, measured over 90 s on BTC-USD:
+
+```
+--- 30 s ---------------------------------------------
+  ticks 142   signals 10   orders 0 sent / 0 filled / 0 rejected
+  cooldown drops 5   missed signals 0   clamped prices 0   feed drops 0   errors 0
+  quote -> decision seen:  min 5 us   mean 13 us   p99 31 us   max 31 us   (n=10)
+  software strategy:       mean 1551 ns   max 8110 ns   (n=142)
+```
+
+**Expect a millisecond-scale `max` on a longer run** — 1082 µs is
+typical. That is not the fabric. With the default `--poll-ms 1`, a
+decision landing just after a poll waits most of a millisecond to be
+noticed. Add `--poll-ms 0` and the mean drops from ~157 µs to ~12 µs.
+[14](14-latency-and-performance.md) §14.5 has both columns.
 
 Cross-check the position against the Alpaca dashboard; they should
 agree. Ctrl-C stops cleanly and disables trading in the fabric.
@@ -410,14 +463,24 @@ confirm the filesystem is unmounted before cutting power.
 
 ```
 [ ] power on; python tools/boardctl.py info
-[ ] python tools/deploy.py net          -> board has an IP, ping works
-[ ] python tools/deploy.py fpga         -> "user mode", no dmesg timeout
-[ ] LOOK AT HEX0                        -> steady 8
+[ ] confirm MSEL = 01010 (SW10: 4 OFF, 5 ON) -- once, then never again
+[ ] python tools/deploy.py net           -> board has an IP, ping works
+[ ] python tools/deploy.py fpga          -> "user mode", no dmesg timeout
+[ ] LOOK AT HEX0                         -> steady 8
 [ ] python tools/deploy.py probe ramtest -> PASS
+[ ] ./fmma-bench --ticks 5000            -> 0 unanswered, 0 side mismatches
 [ ] export APCA_API_KEY_ID / APCA_API_SECRET_KEY
 [ ] sudo -E ./marketstream --dry-run --stats 10
 [ ] confirm "CPU running: protocol v2" and a ">>> FPGA" line
 [ ] drop --dry-run
+```
+
+Only after a source change:
+
+```
+[ ] python tools/deploy.py push          -> sources
+[ ] tools/crossbuild.sh                  -> marketstream (cannot build on the board)
+[ ] python tools/deploy.py pushbin       -> binaries
 ```
 
 ## 11.15 If the board stops responding

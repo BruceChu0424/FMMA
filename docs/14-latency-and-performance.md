@@ -6,7 +6,9 @@ so.
 
 ## 14.1 The headline, and the honest caveat
 
-**The fabric turns a quote into a trading decision in 3.9 µs, deterministically.**
+**The fabric turns a quote into a trading decision in 3.9 µs,
+deterministically — measured on hardware at 3 µs minimum, 5 µs mean over
+5 000 quotes, with the software model agreeing on all 5 000.**
 
 **That is about 0.01 % of the end-to-end latency of this system.** The other
 99.99 % is the public internet between Coinbase and a lab in Logan, Utah.
@@ -75,6 +77,26 @@ The same figures come out of the instruction-set simulator
 (`test_strategy.TestTiming`), which is how they are regression-tested on
 every run without needing Verilog.
 
+### Confirmed on hardware
+
+`fmma-bench` measures the same thing on the real board, from the HPS, and
+the two agree:
+
+| | Simulation | Hardware, 5 000 samples |
+|---|---|---|
+| Best case (quote lands just before the tick check) | 156 cycles = 3.12 µs | **3 µs** (min) |
+| Worst case (quote lands just after it) | 195 cycles = 3.90 µs | — |
+| Typical | — | **5 µs** (mean) |
+| Idle loop | 39 cycles = 780 ns | **0.78 µs** (1 282 151 loops/s) |
+
+The measured minimum sits on the simulated best case and the loop rate
+matches to two significant figures, which is the strongest evidence
+available that the RTL, the simulator and the silicon are the same
+design. The hardware mean is above the simulated worst case because it
+includes what simulation cannot: the host's own store to the bridge, the
+poll that reads the answer back, and write buffering in the L3
+interconnect. See [13](13-test-report.md) §13.5.2.
+
 ### Why 195 cycles
 
 | Phase | Instructions | Cycles |
@@ -108,34 +130,58 @@ scaling. §14.5 measures the mean; the mean is not the problem.
 
 ## 14.5 Measured: hardware versus software
 
-`marketstream --bench` runs the same strategy in C on the ARM core and times
-it with `CLOCK_MONOTONIC`, printing mean and max alongside the fabric's
-figures.
+`fmma-bench` and `marketstream --bench` run the same strategy in C on the
+ARM core and time it with `CLOCK_MONOTONIC`, alongside the fabric's
+figures. Measured on the board over the same 5 000 quotes:
 
-The comparison is deliberately narrow, and the narrowness is the point:
+| | Mean | Max | What it includes |
+|---|---:|---:|---|
+| Fabric, quote → decision | 5 µs | 17 µs | full round trip: bridge write, CPU loop, decide, host poll |
+| ARM core, same strategy | **0.999 µs** | **13.1 µs** | arithmetic only, no bridge |
 
-* It times **only the arithmetic**. It does not include the bridge write,
-  because an FPGA does not remove the need to move data.
-* The ARM is a 925 MHz superscalar core and the arithmetic is a handful of
-  integer operations. It will show a **smaller mean** than 3.9 µs. That is
-  the expected and correct result.
-* What it will also show is a **much larger max**, and a distribution with a
-  long tail, because it is running under Linux.
+The comparison is deliberately narrow, and the narrowness is the point.
+The ARM figure times **only the arithmetic** — it does not include the
+bridge write, because an FPGA does not remove the need to move data.
 
-So the honest conclusion this project reports is:
+The result is the one that was predicted, and it is not flattering to
+the fabric on the mean:
 
-> For arithmetic this simple, a 925 MHz application processor has a lower
-> *mean* latency than a 50 MHz soft CPU. What the fabric provides is a
-> *bounded worst case* — 195 cycles, always — and a path that does not
-> depend on an operating system. In a real system the fabric's win comes
-> from replacing the interpreted instruction stream with a fixed-function
-> pipeline (§14.7), which this CPU deliberately does not do.
+> For arithmetic this simple, a 925 MHz application processor has a mean
+> latency roughly five times *lower* than a 50 MHz soft CPU reached
+> across a bridge. What the fabric provides is a **bounded worst case**
+> and freedom from the operating system. In a real system the fabric's
+> win comes from replacing the interpreted instruction stream with a
+> fixed-function pipeline (§14.7), which this CPU deliberately does not
+> do.
 
 Claiming the FPGA is simply "faster" here would be false, and the
 instrumentation exists precisely so nobody has to guess.
 
-Run it on the board and paste the output into
-[13-test-report](13-test-report.md) §13.5.
+Note the **maxima**, though, which is where the argument actually lives.
+The ARM's worst case is 13.1× its mean; the fabric's is 3.4× its mean,
+and the fabric's spread is dominated by *when the host polls*, not by
+anything happening in the fabric. The fabric's own execution jitter is
+zero (§14.4). Over a longer live run the ARM's tail grew to 22.1 µs
+while the fabric's did not move.
+
+### The host's poll interval dominates everything
+
+On the live feed with the default 1 ms poll, the end-to-end figure looks
+twenty times worse than it is:
+
+| Poll setting | min | mean | max |
+|---|---:|---:|---:|
+| `--poll-ms 1` (default) | 5 µs | 157 µs | 1082 µs |
+| `--poll-ms 0` (busy) | 5 µs | **12 µs** | 48 µs |
+
+A decision that lands just after a poll waits most of a millisecond to
+be noticed. That is **the host, not the fabric** — and it is the single
+largest term in the end-to-end latency of the whole system after the
+internet itself. Anyone quoting 1082 µs as "FPGA latency" would be
+wrong by two orders of magnitude.
+
+The fix is not more FPGA. It is an interrupt from the fabric to the HPS
+instead of a poll, which is §14.7's first item.
 
 ## 14.6 Resource cost
 
@@ -171,13 +217,17 @@ down.
 | Limit | Value | Set by |
 |-------|-------|--------|
 | Decisions the fabric can produce | ~256,000/s | 195 cycles each |
-| Quotes the fabric can consume | ~1,280,000/s | the 780 ns loop |
-| Quotes Coinbase actually sends | ~5/s | the exchange |
+| Quotes the fabric can consume | ~1,280,000/s | the 780 ns loop — **measured: 1,282,151/s** |
+| Quotes Coinbase actually sends | ~5/s | the exchange — **measured: 4.7/s** over 90 s on BTC-USD |
 | Orders Alpaca will accept | ~3/s sustained | broker rate limits |
 
 The fabric is over-provisioned by five orders of magnitude relative to the
 feed. That is not a design error; it is what makes the latency figure a
 property of the design rather than of the load.
+
+`fmma-bench` drove 5 000 quotes at 3 300/s — 700× the live rate — and
+the fabric answered every one of them with no missed decisions, which is
+the load-independence claim tested rather than asserted.
 
 ## 14.9 Reproducing these numbers
 
@@ -192,6 +242,18 @@ cd Software && python -m unittest test_strategy.TestTiming -v
 grep -A20 "Fitter Summary" output_files/HFTTop.fit.summary
 cat output_files/HFTTop.sta.summary
 
-# end-to-end, on the board
-sudo -E ./marketstream --bench --stats 30
+# fabric latency on real silicon: 5000 synthetic quotes, busy-polled
+sudo ./fmma-bench --ticks 5000 --interval 300 --csv lat.csv
+
+# end-to-end on the live feed, no orders sent
+sudo ./marketstream --dry-run --bench --threshold 200 --stats 30
+
+# the same, with the host's poll interval removed
+sudo ./marketstream --dry-run --threshold 200 --stats 40 --poll-ms 0
 ```
+
+`fmma-bench` is the one to reach for. It needs no network, no broker and
+no OpenSSL, it is repeatable because the quote series is synthetic, and
+it checks the fabric's decisions against the software model on every
+sample — so a latency number it produces is one where the two halves
+also agreed on the answer.

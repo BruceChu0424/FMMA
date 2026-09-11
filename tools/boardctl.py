@@ -8,21 +8,26 @@ instead of a person typing into PuTTY.
 
     python tools/boardctl.py info
     python tools/boardctl.py run "uname -a"
-    python tools/boardctl.py push Software/MarketStream.c /root/fmma/
+    python tools/boardctl.py push Software/src/main.c /root/fmma/src/
     python tools/boardctl.py pull /root/fmma/run.log logs/
     python tools/boardctl.py shell                # interactive
 
-Transfers go over the console as base64, which is slow (about 6 KB/s at
-115200 baud) but needs nothing on the far end except `base64`, which every
-image has.  Use `--via-net` once the board has an address; it is hundreds of
-times faster.
+Transfers over the console are base64 at roughly 6 KB/s - fine for a source
+file, painful for a bitstream.  `deploy.py` uses HTTP once the board has an
+address, which is hundreds of times faster.
 
-Design notes
-------------
-Everything funnels through `Board.run()`, which brackets each command with a
-unique marker so the reply can be separated from echo and from anything the
-kernel prints.  That is the whole trick to making a serial console reliable:
-never parse a prompt, always parse a marker you chose yourself.
+Design note: making a serial console scriptable
+-----------------------------------------------
+The console echoes back everything it is sent, so the reply arrives mixed
+in with a copy of the request.  Worse, a long command wraps, and the
+terminal inserts cursor-movement escapes in the middle of the echo, so the
+request cannot simply be matched and deleted.
+
+The way out is to have the far end build the markers from shell variables.
+What gets echoed is `printf '%s\\n' "${S}@"`, never the expanded marker, so
+the first literal occurrence of the marker in the stream is guaranteed to be
+real output.  Everything funnels through Board.run(), which does that once
+and correctly.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ import argparse
 import base64
 import hashlib
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -42,8 +48,10 @@ except ImportError:                                    # pragma: no cover
     sys.exit("pyserial is required:  python -m pip install pyserial")
 
 DEFAULT_BAUD = 115200
-DEFAULT_PROMPT_TIMEOUT = 15.0
-CHUNK = 2048                 # base64 payload bytes per line
+DEFAULT_TIMEOUT = 20.0
+CHUNK = 2048                 # base64 payload characters per console write
+
+_CSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 
 
 class BoardError(RuntimeError):
@@ -53,9 +61,9 @@ class BoardError(RuntimeError):
 def find_port(hint=None):
     """Pick the board's serial port.
 
-    A DE1-SoC shows up as a plain USB serial converter, so there is nothing
-    in the descriptor that identifies it.  Prefer an explicit --port; when
-    guessing, skip Bluetooth ports, which are the usual decoys.
+    A DE1-SoC shows up as a plain USB serial converter, so nothing in the
+    descriptor identifies it.  Prefer an explicit --port; when guessing,
+    skip Bluetooth ports, which are the usual decoys.
     """
     if hint:
         return hint
@@ -64,14 +72,32 @@ def find_port(hint=None):
         desc = f"{p.description} {p.manufacturer or ''}".lower()
         if "bluetooth" in desc or "蓝牙" in p.description:
             continue
-        score = 0
-        if "usb serial" in desc or "ftdi" in desc or "cp210" in desc:
-            score += 10
+        score = 10 if ("usb serial" in desc or "ftdi" in desc
+                       or "cp210" in desc) else 0
         candidates.append((score, p.device))
     if not candidates:
         raise BoardError("no candidate serial ports; pass --port COMx")
     candidates.sort(reverse=True)
     return candidates[0][1]
+
+
+def _clean(text):
+    """Strip terminal escapes, our own epilogue and blank edges."""
+    text = _CSI.sub("", text).replace("\r", "")
+    lines = []
+    for ln in text.split("\n"):
+        # The shell echoes the second line we send - the one that
+        # captures $? and prints the end marker - and that echo lands
+        # inside the captured body. It is the only place this token can
+        # come from, so dropping it is unambiguous.
+        if "__rc=$?" in ln:
+            continue
+        lines.append(ln)
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(lines)
 
 
 class Board:
@@ -103,117 +129,112 @@ class Board:
         self.ser.write(text.encode("utf-8", "replace"))
         self.ser.flush()
 
-    def _read_until(self, marker, timeout):
-        deadline = time.time() + timeout
-        buf = bytearray()
-        target = marker.encode()
-        while time.time() < deadline:
-            chunk = self.ser.read(4096)
-            if chunk:
-                buf += chunk
-                if self.verbose:
-                    sys.stderr.write(chunk.decode("utf-8", "replace"))
-                    sys.stderr.flush()
-                if target in buf:
-                    return buf.decode("utf-8", "replace")
-            else:
-                time.sleep(0.01)
-        raise BoardError(
-            f"timed out after {timeout:.0f}s waiting for the command to finish.\n"
-            f"Last 400 bytes seen:\n{buf[-400:].decode('utf-8', 'replace')}")
-
     def wake(self):
         """Make sure there is a shell on the other end."""
         self.ser.reset_input_buffer()
         self._write("\r\n")
         time.sleep(0.4)
-        self.ser.read(4096)
+        self.ser.read(8192)
 
     # -- the one entry point everything else uses ---------------------------
 
-    def run(self, command, timeout=DEFAULT_PROMPT_TIMEOUT, check=True):
-        """Run a shell command; return (exit_code, output).
+    def run(self, command, timeout=DEFAULT_TIMEOUT, check=True):
+        """Run a shell command; return (exit_code, output)."""
+        tag = os.urandom(5).hex()
+        s_mark = "@FS" + tag + "@"
+        e_mark = "@FE" + tag + "@"
 
-        The command is bracketed with a unique marker, so the output can be
-        separated from the echo and from any kernel chatter without having
-        to recognise a prompt.
-        """
-        tag = f"__FMMA_{os.urandom(4).hex()}__"
+        # The assignments hold the marker minus its final '@', so the
+        # complete marker never appears in what the console echoes back.
+        wrapped = (
+            "S='@FS" + tag + "'; E='@FE" + tag + "'; "
+            "printf '%s\\n' \"${S}@\"; "
+            + command + "\n"
+            "__rc=$?; printf '%s%d%s\\n' \"${E}@\" $__rc \"${E}@\"\n"
+        )
+
         self.ser.reset_input_buffer()
-        self._write(f"{command}\necho {tag}$?{tag}\n")
-        raw = self._read_until(f"{tag}", timeout)
+        self._write(wrapped)
 
-        # The echo of our own 'echo' line contains the marker too, so take
-        # the completed form: TAG<digits>TAG.
-        import re
-        m = None
-        for m in re.finditer(re.escape(tag) + r"(\d+)" + re.escape(tag), raw):
-            pass
-        if m is None:
-            raw += self._read_until(tag, timeout)
-            for m in re.finditer(re.escape(tag) + r"(\d+)" + re.escape(tag), raw):
-                pass
-        if m is None:
-            raise BoardError(f"could not find the completion marker in:\n{raw[-400:]}")
+        pattern = re.compile(re.escape(e_mark) + r"(\d+)" + re.escape(e_mark))
+        deadline = time.time() + timeout
+        buf = ""
 
-        code = int(m.group(1))
-        body = raw[:m.start()]
-        lines = body.splitlines()
-        # Drop the echoed command and the echoed 'echo TAG$?TAG' line.
-        cleaned = [ln for ln in lines
-                   if tag not in ln and ln.strip() != command.strip()]
-        out = "\n".join(cleaned).strip("\r\n")
-        if check and code != 0:
-            raise BoardError(f"command failed ({code}): {command}\n{out}")
-        return code, out
+        while time.time() < deadline:
+            chunk = self.ser.read(4096)
+            if not chunk:
+                time.sleep(0.01)
+                continue
+            text = chunk.decode("utf-8", "replace")
+            if self.verbose:
+                sys.stderr.write(text)
+                sys.stderr.flush()
+            buf += text
+
+            m = pattern.search(buf)
+            if m is None:
+                continue
+
+            body = buf[:m.start()]
+            i = body.find(s_mark)
+            if i >= 0:
+                body = body[i + len(s_mark):]
+            code = int(m.group(1))
+            out = _clean(body)
+            if check and code != 0:
+                raise BoardError(f"command failed ({code}): {command}\n{out}")
+            return code, out
+
+        raise BoardError(
+            "timed out after %.0fs waiting for the command to finish.\n"
+            "Last 400 characters seen:\n%s" % (timeout, buf[-400:]))
 
     # -- file transfer ------------------------------------------------------
 
     def push(self, local, remote_dir, progress=True):
-        """Copy a local file to the board over the console."""
+        """Copy a local file to the board over the console, as base64."""
         local = Path(local)
         data = local.read_bytes()
         digest = hashlib.md5(data).hexdigest()
-        remote = f"{remote_dir.rstrip('/')}/{local.name}"
+        remote = remote_dir.rstrip("/") + "/" + local.name
 
-        self.run(f"mkdir -p {remote_dir}")
-        self.run(f"rm -f {remote}.b64 {remote}")
+        self.run("mkdir -p " + remote_dir)
+        self.run("rm -f %s.b64 %s" % (remote, remote))
 
         encoded = base64.b64encode(data).decode()
         total = len(encoded)
-        sent = 0
         t0 = time.time()
         for i in range(0, total, CHUNK):
             part = encoded[i:i + CHUNK]
-            # printf keeps the shell from interpreting anything in the payload
-            self.run(f"printf '%s' '{part}' >> {remote}.b64", timeout=30)
-            sent += len(part)
+            # printf keeps the shell from interpreting the payload.
+            self.run("printf '%%s' '%s' >> %s.b64" % (part, remote),
+                     timeout=60)
             if progress:
-                pct = 100 * sent / total
+                sent = min(i + CHUNK, total)
                 rate = len(data) * (sent / total) / max(time.time() - t0, 1e-3)
-                sys.stderr.write(f"\r  {local.name}: {pct:5.1f}%  "
-                                 f"{rate/1024:.1f} KB/s   ")
+                sys.stderr.write("\r  %s: %5.1f%%  %.1f KB/s   "
+                                 % (local.name, 100 * sent / total,
+                                    rate / 1024))
                 sys.stderr.flush()
         if progress:
             sys.stderr.write("\n")
 
-        self.run(f"base64 -d {remote}.b64 > {remote} && rm -f {remote}.b64",
-                 timeout=60)
-        _, got = self.run(f"md5sum {remote} | cut -d' ' -f1")
+        self.run("base64 -d %s.b64 > %s && rm -f %s.b64"
+                 % (remote, remote, remote), timeout=120)
+        _, got = self.run("md5sum %s | cut -d' ' -f1" % remote, timeout=60)
         got = got.strip().splitlines()[-1].strip()
         if got != digest:
-            raise BoardError(f"checksum mismatch for {remote}: "
-                             f"{got} != {digest}")
+            raise BoardError("checksum mismatch for %s: %s != %s"
+                             % (remote, got, digest))
         return remote
 
     def pull(self, remote, local_dir):
         """Copy a file from the board to the host over the console."""
         local_dir = Path(local_dir)
         local_dir.mkdir(parents=True, exist_ok=True)
-        _, b64 = self.run(f"base64 {remote}", timeout=300)
-        blob = "".join(b64.split())
+        _, b64 = self.run("base64 " + remote, timeout=300)
         dest = local_dir / Path(remote).name
-        dest.write_bytes(base64.b64decode(blob))
+        dest.write_bytes(base64.b64decode("".join(b64.split())))
         return dest
 
     # -- convenience --------------------------------------------------------
@@ -223,27 +244,25 @@ class Board:
         checks = [
             ("kernel", "uname -a"),
             ("uptime", "uptime"),
-            ("distro", "cat /etc/os-release 2>/dev/null | head -2 || echo unknown"),
-            ("cpu", "grep -m1 'model name' /proc/cpuinfo || head -3 /proc/cpuinfo"),
-            ("memory", "free -m | head -2"),
+            ("cpu", "grep -m1 'model name' /proc/cpuinfo || head -1 /proc/cpuinfo"),
+            ("memory", "free -m | sed -n 2p"),
             ("disk", "df -h / | tail -1"),
-            ("network", "ip -4 addr show scope global 2>/dev/null | grep inet || ifconfig 2>/dev/null | grep 'inet '"),
-            ("route", "ip route 2>/dev/null | head -3 || route -n | head -4"),
-            ("dns", "cat /etc/resolv.conf 2>/dev/null | grep -v '^#' | head -3"),
-            ("gcc", "gcc --version 2>/dev/null | head -1 || echo 'not installed'"),
-            ("openssl-dev", "ls /usr/include/openssl/ssl.h 2>/dev/null || echo 'not installed'"),
-            ("python3", "python3 --version 2>&1 | head -1 || echo 'not installed'"),
-            ("fpga manager", "ls /sys/class/fpga_manager/ 2>/dev/null || echo 'none'"),
-            ("fpga bridges", "ls /sys/class/fpga_bridge/ 2>/dev/null || echo 'none'"),
-            ("devmem", "which devmem2 devmem 2>/dev/null || echo 'not installed'"),
-            ("/dev/mem", "ls -l /dev/mem 2>/dev/null || echo missing"),
+            ("ip", "ip -4 -o addr show eth0 2>/dev/null | awk '{print $4}'"),
+            ("route", "ip route 2>/dev/null | sed -n 1p"),
+            ("dns", "grep nameserver /etc/resolv.conf 2>/dev/null | head -2"),
+            ("gcc", "gcc -dumpversion 2>/dev/null || echo none"),
+            ("openssl-dev", "test -f /usr/include/openssl/ssl.h && echo present || echo absent"),
+            ("fpga manager", "ls /sys/class/fpga/ 2>/dev/null || echo none"),
+            ("fpga bridges", "ls /sys/class/fpga-bridge/ 2>/dev/null | tr '\\n' ' '"),
+            ("fpga status", "cat /sys/class/fpga/fpga0/status 2>/dev/null || echo unknown"),
+            ("/dev/mem", "test -c /dev/mem && echo present || echo missing"),
         ]
         out = {}
         for name, cmd in checks:
             try:
                 _, text = self.run(cmd, check=False)
             except BoardError as e:
-                text = f"<error: {e}>"
+                text = "<error: %s>" % e
             out[name] = text.strip()
         return out
 
@@ -256,10 +275,10 @@ def cmd_info(board, args):
     facts = board.info()
     width = max(len(k) for k in facts)
     for k, v in facts.items():
-        first, *rest = (v or "-").splitlines() or ["-"]
-        print(f"{k:<{width}} : {first}")
-        for line in rest:
-            print(f"{'':<{width}}   {line}")
+        parts = (v or "-").splitlines() or ["-"]
+        print("%-*s : %s" % (width, k, parts[0]))
+        for line in parts[1:]:
+            print("%-*s   %s" % (width, "", line))
     return 0
 
 
@@ -272,22 +291,19 @@ def cmd_run(board, args):
 
 def cmd_push(board, args):
     for src in args.files:
-        dest = board.push(src, args.dest)
-        print(f"pushed {src} -> {dest}")
+        print("pushed %s -> %s" % (src, board.push(src, args.dest)))
     return 0
 
 
 def cmd_pull(board, args):
-    dest = board.pull(args.remote, args.dest)
-    print(f"pulled {args.remote} -> {dest}")
+    print("pulled %s -> %s" % (args.remote, board.pull(args.remote, args.dest)))
     return 0
 
 
 def cmd_shell(board, args):
     """A dumb interactive console, for when a human needs to poke around."""
-    print(f"connected to {board.port_name}; Ctrl-] to quit")
     import threading
-
+    print("connected to %s; type .quit to leave" % board.port_name)
     stop = threading.Event()
 
     def reader():
@@ -300,9 +316,8 @@ def cmd_shell(board, args):
     t = threading.Thread(target=reader, daemon=True)
     t.start()
     try:
-        while True:
-            line = sys.stdin.readline()
-            if not line or line.strip() == "\x1d":
+        for line in sys.stdin:
+            if line.strip() == ".quit":
                 break
             board._write(line)
     except KeyboardInterrupt:
@@ -320,11 +335,12 @@ def main(argv=None):
                    help="echo everything the board sends")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("info", help="report what is on the board").set_defaults(fn=cmd_info)
+    sub.add_parser("info", help="report what is on the board") \
+       .set_defaults(fn=cmd_info)
 
     r = sub.add_parser("run", help="run a shell command")
     r.add_argument("command")
-    r.add_argument("--timeout", type=float, default=DEFAULT_PROMPT_TIMEOUT)
+    r.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     r.set_defaults(fn=cmd_run)
 
     u = sub.add_parser("push", help="copy files to the board")
@@ -345,7 +361,7 @@ def main(argv=None):
             board.wake()
             return args.fn(board, args)
     except BoardError as e:
-        print(f"error: {e}", file=sys.stderr)
+        print("error: %s" % e, file=sys.stderr)
         return 1
 
 

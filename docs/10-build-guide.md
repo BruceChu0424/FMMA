@@ -65,13 +65,29 @@ fails the build if any generated file is stale.
 
 ## 10.3 Building the host program
 
-On the board:
+There are three targets and they do not all build in the same place:
+
+| Target | Needs | Builds on the board? |
+|--------|-------|----------------------|
+| `make probe` → `fmma-probe` | libc | yes, in about a second |
+| `make bench` → `fmma-bench` | libc | yes, in about a second |
+| `make` → `marketstream` | **OpenSSL headers** | **no** — see below |
 
 ```bash
 cd Software
-make
-sudo ./marketstream --help
+make probe bench          # on the board
+sudo ./fmma-probe
 ```
+
+**`marketstream` cannot be built on a stock DE1-SoC image.** The image
+ships `libssl.so` but not `openssl/ssl.h`, and its Ubuntu 12.04
+archives have been retired, so `apt-get install libssl-dev` cannot
+succeed — this was confirmed on the board, not assumed. Cross-compile
+it instead; §10.4a is one command.
+
+That split is also why the two diagnostics deliberately avoid TLS: the
+tools you need when the build is broken must not depend on the thing
+that is broken.
 
 Two compiler settings are not negotiable, and both cost real time to
 discover:
@@ -135,23 +151,41 @@ or use the Quartus Programmer GUI. See [11](11-board-bringup.md) §11.4.
 
 ## 10.4a Cross-compiling a self-contained binary
 
-When the board cannot install `libssl-dev`, build somewhere that can
-and copy the result across:
+This is the normal route for `marketstream`, not a fallback.
 
 ```bash
-docker run --rm -v "$PWD:/work" -w /work/Software   debian:bookworm-slim bash -c '
-    dpkg --add-architecture armhf && apt-get update -qq &&
-    apt-get install -y -qq crossbuild-essential-armhf libssl-dev:armhf &&
-    make CC=arm-linux-gnueabihf-gcc static'
+tools/crossbuild.sh                        # build all three, static armhf
+python tools/deploy.py --port COM5 pushbin # copy them to the board
 ```
 
-`make static` links OpenSSL and glibc into the binary, so the board's
-distribution stops mattering. Static glibc normally breaks name
-resolution because `getaddrinfo` needs NSS plugins at run time; it does
-not here, because mongoose resolves DNS itself over UDP and never calls
-`getaddrinfo`.
+The first run builds a Docker image from
+[`tools/Dockerfile.armhf`](../tools/Dockerfile.armhf) — Debian bookworm
+with `crossbuild-essential-armhf` and `libssl-dev:armhf` — which takes a
+few minutes. After that it is seconds.
 
-`tools/deploy.py push` then copies the binaries over.
+**Static, not dynamic.** The cross toolchain has glibc 2.36 and the
+board has 2.15, so a dynamically linked binary would not start: the
+loader would ask for symbol versions the board has never heard of.
+`make static` links OpenSSL and glibc in, and the board's distribution
+stops mattering. The result should be:
+
+```
+marketstream: ELF 32-bit LSB executable, ARM, EABI5, statically linked,
+              for GNU/Linux 3.2.0
+```
+
+The board runs kernel 3.13, comfortably above that floor.
+
+Static glibc normally breaks name resolution, because `getaddrinfo`
+loads NSS plugins at run time and a static binary has nowhere to load
+them from. It does not break here: mongoose resolves DNS itself over
+UDP and never calls `getaddrinfo`. The linker warns about this anyway —
+along with `dlopen` and `gethostbyname`, reached from OpenSSL code that
+mongoose does not use. Those three warnings are expected.
+
+Use `bookworm`, not `bullseye`: bullseye is past end of life and its
+security repository's `Release` file is expired, which fails
+`apt-get update` inside the image.
 
 ## 10.5 Running the tests
 

@@ -200,55 +200,134 @@ the class of bug the check exists for.
 
 ## 13.5 On the board
 
-**Partially run.** The board was brought up far enough to establish the
-environment and to find two things that matter:
+**Run, on a Terasic DE1-SoC, 11 September 2026.** Serial console on
+`COM5`, Ethernet on `192.168.1.198/24`, FPGA configured from Linux with
+no JTAG cable.
+
+### 13.5.1 Bring-up
+
+| Check | Result |
+|-------|--------|
+| `MSEL` reads `01010` (FPPx16) | **pass** — `SW10.4` OFF, `SW10.5` ON |
+| `deploy.py fpga` reports `user mode`, no timeout | **pass** |
+| `fmma-probe ramtest` | **pass** — 256 words, 32 data bits, 0 errors |
+| `CPU running: protocol v2` | **pass** — program verified, 154 words |
+| CPU idle loop rate | 1 282 151 loops/s, **0.78 µs per loop** |
+
+The environment itself decided two build questions:
 
 | Finding | Consequence |
 |---------|-------------|
-| The image is kernel 3.13 with **gcc 4.6.3** and no OpenSSL headers | the build uses `-std=gnu99`; `make static` exists for boards that cannot install `libssl-dev` |
-| `/dev/fpga0` and the three FPGA bridges are present | the FPGA can be configured from Linux, with no JTAG cable |
-| Ethernet, DHCP and DNS to the exchange all work | the live feed is reachable from the board |
-| **`MSEL[4:0] = 10010` (Active Serial)** | the HPS cannot configure the FPGA at all until `SW10` is changed; see §11.4 |
+| Kernel 3.13, **gcc 4.6.3**, glibc 2.15 | the build uses `-std=gnu99`; gcc 4.6 has no C11 mode |
+| `libssl.so` present, **headers absent**, Ubuntu 12.04 archives gone | `marketstream` cannot be built on the board at all — see 13.5.4 |
+| `/dev/fpga0` and the three FPGA bridges present | the FPGA is configurable from Linux |
+| Ethernet, DHCP and DNS to the exchange all work | the live feed is reachable |
+| The 2012 CA bundle still validates Coinbase | no CA bundle needs shipping; `--ca` remains available if that changes |
 
-The MSEL strap is what blocked the rest. In Active Serial mode the FPGA
-loads itself from the on-board EPCQ flash and the FPGA manager refuses
-every bitstream — including the board's own `soc_system.rbf` — with
-`Invalid MSEL setting` followed by a timeout. It looks exactly like a
-bad bitstream and is not.
+`MSEL` was what blocked everything before this. In Active Serial mode
+(`10010`, the factory setting) the FPGA loads itself from the on-board
+EPCQ flash and the FPGA manager refuses every bitstream — including the
+board's own `soc_system.rbf` — with `Invalid MSEL setting` followed by a
+timeout. It looks exactly like a bad bitstream and is not; §11.4.
 
 It also produced the project's one hardware incident: a configuration
 that had silently failed left the fabric unconfigured, and the next read
 of the bridge hung the board hard enough to need a power cycle. That is
-now impossible by construction — every path checks the fabric state
-first — and it is written up in [11](11-board-bringup.md) and
-[15](15-troubleshooting.md) §15.2.
+now impossible by construction — every path that maps the bridge asks
+the FPGA manager first — and it is written up in
+[11](11-board-bringup.md) and [15](15-troubleshooting.md) §15.2.
 
-Record here once `SW10` is set to `01010` and the run completes:
+### 13.5.2 Fabric latency, synthetic series
 
-| Check | Result |
-|-------|--------|
-| `MSEL` reads `01010` | |
-| `deploy.py fpga` reports `user mode`, no timeout | |
-| `HEX0` steady `8` after configuration | |
-| `fmma-probe ramtest` PASS | |
-| `CPU running: protocol v2` | |
-| `[FEED] connected` | |
-| `>>> FPGA BUY/SELL` with a latency figure | |
-| Alpaca accepts the order; position agrees with the dashboard | |
-| `--bench` output (software vs fabric) | |
+`fmma-bench` drives the protocol with a square wave one price unit
+outside the band, so every quote produces a decision, and busy-polls for
+the answer. 5 000 ticks, 300 µs apart:
 
-Record here, when it is done:
+| Measure | Result |
+|---------|--------|
+| Ticks published | 5 000 |
+| Decisions read back | **5 000** — none missed, none late |
+| Quote → decision, min / mean | **3 µs / 5 µs** |
+| Quote → decision, p99 / max | **16 µs / 17 µs** |
+| Same strategy on the ARM core | mean 999 ns, max 13.1 µs |
+| Side disagreements, fabric vs software | **0 of 5 000** |
 
-| Check | Result |
-|-------|--------|
-| `HEX0` steady `8` after configuration | |
-| `[LOADER] Program verified.` | |
-| `[LOADER] CPU running: protocol v2` | |
-| `[FEED] connected` | |
-| `>>> [FPGA] BUY/SELL` with a latency figure | |
-| Alpaca accepts the order, position agrees with the dashboard | |
-| `--bench` output (software vs fabric) | |
-| Sustained run without an error or a lost signal | |
+The last row is the equivalence result: the assembly running in the
+fabric and the C transcription in [`fmma_strategy.c`](../Software/src/fmma_strategy.c)
+reached the same decision on every one of five thousand quotes. Taken
+with the 9 548 ALU vectors (§13.2) and the RTL assertions (§13.3), the
+strategy is checked at three levels against the same golden model.
+
+The fabric figure is a **full round trip** — seqlock publish, CPU loop,
+decide, host poll — not the CPU's compute time. The ARM figure is
+strategy arithmetic only, with no bridge in it. They are not competing
+numbers; [14](14-latency-and-performance.md) says why at more length.
+
+### 13.5.3 End to end, live market data
+
+`marketstream` against the Coinbase `ticker` channel for BTC-USD, with
+`--dry-run` so no order leaves the board (see 13.5.5), threshold $2.00:
+
+```
+[   0.852] info  feed  connected, subscribed to BTC-USD ticker
+[   0.984] info  app   >>> FPGA SELL  (tick 10104, 5 us after the quote, fabric position 0)
+[   8.482] info  app   >>> FPGA BUY   (tick 10192, 32 us after the quote, fabric position 0)
+[  10.488] info  app   >>> FPGA SELL  (tick 10230, 6 us after the quote, fabric position 0)
+```
+
+| Window | Ticks | Decisions | min | mean | p99 | max |
+|--------|-------|-----------|-----|------|-----|-----|
+| 90 s, `--poll-ms 1` (default) | 424 | 23 | 5 µs | 157 µs | 1082 µs | 1082 µs |
+| 40 s, `--poll-ms 0` (busy) | 184 | 9 | 5 µs | **12 µs** | 48 µs | 48 µs |
+
+The millisecond tail in the first row is **the host, not the fabric**.
+With a 1 ms poll interval a decision that lands just after a poll waits
+most of a millisecond to be noticed, and 1082 µs is that interval plus
+the work either side of it. Busy-polling removes it and the live figure
+collapses onto the synthetic one. This is worth stating plainly because
+it is the single largest term in the end-to-end number, it is entirely
+on the software side, and quoting the 1082 µs as "FPGA latency" would be
+wrong.
+
+No feed drops, no parse errors, no missed signals in the busy-poll run.
+The default-poll run recorded one `decision(s) arrived faster than this
+loop could read them` during a burst — the sequence-counter edge
+detection caught it and said so, which is the behaviour §7 specifies.
+
+### 13.5.4 Cross-building, and why it is necessary
+
+The board has `libssl.so` but not `openssl/ssl.h`, and Ubuntu 12.04's
+archives are gone, so `apt-get install libssl-dev` cannot succeed. The
+two diagnostics build on the board in about a second; `marketstream`
+cannot be built there at all.
+
+[`tools/Dockerfile.armhf`](../tools/Dockerfile.armhf) and
+[`tools/crossbuild.sh`](../tools/crossbuild.sh) produce a **static**
+armhf binary from a current Debian. Static because the toolchain has
+glibc 2.36 and the board has 2.15, so a dynamically linked binary would
+not start. Static glibc would normally break name resolution —
+`getaddrinfo` loads NSS plugins at run time — but mongoose resolves
+names itself over UDP and never calls it.
+
+```
+marketstream: ELF 32-bit LSB executable, ARM, EABI5, statically linked,
+              for GNU/Linux 3.2.0
+```
+
+`deploy.py pushbin` copies the result over HTTP.
+
+### 13.5.5 What was not run, and why
+
+| Not run | Reason |
+|---------|--------|
+| A live Alpaca paper order | The API key committed in `d65ee28` is exposed in git history and **must be revoked before any key is used on this board**. Every run here used `--dry-run`, which logs the order and sends nothing. See [18](18-security-and-compliance.md). |
+| Visual confirmation of `HEX0` | Requires someone at the bench. `fmma-probe ramtest` and the CPU's own version word establish the same thing electrically. |
+| `market_maker.asm` on hardware | Verified in simulation and against the ISS (§13.2, §13.4); `trading.asm` is the default image and is what was measured here. |
+
+Once the key is revoked and a fresh one exported, the remaining step is
+one command — `sudo -E ./marketstream --threshold 200` without
+`--dry-run` — and the check is that Alpaca's dashboard shows the fill
+and the fabric's `POSITION` word agrees with it.
 
 ## 13.6 Requirement coverage
 

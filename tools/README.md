@@ -1,8 +1,9 @@
 # Tools
 
-Host-side tooling. Neither of these is needed to build the project; they
-exist so that working with the board is repeatable instead of a person
-typing into a terminal emulator.
+Host-side tooling. None of it is needed to build the FPGA bitstream;
+it exists so that working with the board is repeatable instead of a
+person typing into a terminal emulator — with one exception,
+`crossbuild.sh`, which is the only way to build `marketstream` at all.
 
 ## `boardctl.py` — a scriptable serial console
 
@@ -36,7 +37,8 @@ python tools/deploy.py status      # what state is the board in?
 python tools/deploy.py net         # DHCP on eth0
 python tools/deploy.py fpga        # program the FPGA, safely
 python tools/deploy.py restore     # put the stock bitstream back
-python tools/deploy.py push        # copy the software
+python tools/deploy.py push        # copy the sources
+python tools/deploy.py pushbin     # copy binaries from crossbuild.sh
 python tools/deploy.py build
 python tools/deploy.py probe ramtest
 python tools/deploy.py run -- --dry-run
@@ -45,6 +47,37 @@ python tools/deploy.py all         # everything, in order
 
 The serial console is the control channel; bulk data goes over HTTP from
 a short-lived server on the development machine.
+
+`push` sends the sources as one gzipped tarball — a file at a time meant
+a serial round trip each, which for thirty-odd files was both slow and
+fragile. A manifest travels inside the archive so the board can `touch`
+exactly the files that arrived. That matters more than it sounds: `tar`
+restores the *host's* modification times, the board's clock is rarely in
+step, and sources that land looking older than the last build make
+`make` quietly decide there is nothing to do. You then test the old
+binary and cannot work out why your fix did nothing.
+
+## `crossbuild.sh` — the only way to build `marketstream`
+
+The board has `libssl.so` but not its headers, and its Ubuntu 12.04
+archives are gone, so `libssl-dev` cannot be installed. `fmma-probe` and
+`fmma-bench` build on the board in a second because they need nothing
+but libc; `marketstream` cannot be built there at all.
+
+```bash
+tools/crossbuild.sh                        # static armhf, all three
+python tools/deploy.py --port COM5 pushbin
+```
+
+The first run builds the image in [`Dockerfile.armhf`](Dockerfile.armhf)
+— Debian bookworm plus `crossbuild-essential-armhf` and
+`libssl-dev:armhf` — which takes a few minutes; after that it is
+seconds. The output is **static**, because the cross toolchain has glibc
+2.36 and the board has 2.15.
+
+See [docs/10](../docs/10-build-guide.md) §10.4a for the details,
+including why static glibc does not break DNS here and which linker
+warnings are expected.
 
 ### The safety rule
 

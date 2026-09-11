@@ -15,9 +15,17 @@
  *   fmma-probe write <word> <value>
  *
  * Word indices are the ones in docs/07-shared-memory-protocol.md.
+ *
+ * Every subcommand asks the FPGA manager whether the fabric is
+ * configured before it maps anything.  Reading an unconfigured bridge
+ * hangs the board with no software recovery, and this is the tool most
+ * likely to be pointed at a board in exactly that state.  --force skips
+ * the check; see fmma_socfpga.h for why that is rarely a good idea.
  */
 
 #include "../fmma_protocol.h"
+#include "fmma_log.h"
+#include "fmma_socfpga.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -39,8 +47,10 @@ static volatile sig_atomic_t g_stop;
 
 static void on_sigint(int s) { (void)s; g_stop = 1; }
 
-static int map_bridge(void)
+static int map_bridge(int force)
 {
+    if (fmma_fabric_check(force) != 0) return -1;
+
     g_fd = open("/dev/mem", O_RDWR | O_SYNC);
     if (g_fd == -1) {
         fprintf(stderr, "open /dev/mem: %s (run as root)\n", strerror(errno));
@@ -245,17 +255,33 @@ static void usage(void)
            "  fmma-probe ramtest         prove the window is our shared RAM\n"
            "  fmma-probe dump [n]        hex dump the first n words\n"
            "  fmma-probe read  <word>\n"
-           "  fmma-probe write <word> <value>\n",
+           "  fmma-probe write <word> <value>\n"
+           "\n"
+           "  --force   map the bridge even if the FPGA manager says the\n"
+           "            fabric is not configured (this can hang the board)\n",
            FMMA_PROTOCOL_VERSION);
 }
 
 int main(int argc, char **argv)
 {
+    int force = 0;
+
+    /* Pull --force out of the argument list so the subcommands keep
+     * their simple positional parsing. */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--force")) continue;
+        for (int j = i; j < argc - 1; j++) argv[j] = argv[j + 1];
+        argc--; i--;
+        force = 1;
+    }
+
     if (argc > 1 && (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help"))) {
         usage();
         return 0;
     }
-    if (map_bridge() != 0) return 1;
+
+    fmma_log_init(FMMA_LOG_INFO);
+    if (map_bridge(force) != 0) return 1;
 
     int rc;
     if (argc < 2)                        rc = cmd_summary();

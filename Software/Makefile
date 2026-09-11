@@ -1,7 +1,8 @@
 # FMMA - HPS-side build
 #
-#   make              build ./marketstream and ./fmma-probe
+#   make              build ./marketstream, ./fmma-probe and ./fmma-bench
 #   make probe        just the diagnostic (no TLS, no mongoose, builds in 1 s)
+#   make bench        the latency harness (no TLS either)
 #   make test         run the host unit tests
 #   make check        unit tests + the Python suites
 #   make protocol     regenerate the shared memory map (C / asm / Verilog)
@@ -40,12 +41,21 @@ MONGOOSE_CFLAGS = -O2 -std=gnu99 -w
 
 APP       = marketstream
 PROBE     = fmma-probe
+BENCH     = fmma-bench
 UNITTEST  = fmma-unittest
 
 APP_SRC = src/main.c src/fmma_app.c src/fmma_config.c src/fmma_exec.c \
           src/fmma_feed.c src/fmma_fixed.c src/fmma_fpga.c src/fmma_json.c \
           src/fmma_log.c src/fmma_risk.c src/fmma_socfpga.c \
           src/fmma_stats.c src/fmma_strategy.c src/fmma_tls.c
+
+# The two diagnostics link against libc only, so they still build when
+# TLS or the network stack is the thing that is broken - which on the
+# stock DE1-SoC image, with no OpenSSL headers, is the normal state.
+PROBE_SRC = src/fmma_probe.c src/fmma_socfpga.c src/fmma_log.c
+
+BENCH_SRC = src/fmma_bench.c src/fmma_fpga.c src/fmma_socfpga.c \
+            src/fmma_log.c src/fmma_stats.c src/fmma_strategy.c
 
 TEST_SRC = tests/test_units.c src/fmma_fixed.c src/fmma_json.c \
            src/fmma_risk.c src/fmma_strategy.c src/fmma_log.c
@@ -54,9 +64,10 @@ GENERATED = fmma_protocol.h fmma_protocol.inc ../Testbenches/fmma_protocol.vh \
             fpga_program.h fpga_program.hex fpga_program.bin \
             fpga_program.mif fpga_program.lst
 
-.PHONY: all probe test check check-generated protocol program static clean help
+.PHONY: all probe bench test check check-generated protocol program \
+        static clean help
 
-all: $(APP) $(PROBE)
+all: $(APP) $(PROBE) $(BENCH)
 
 # ---------------------------------------------------------------------
 # The application
@@ -68,11 +79,16 @@ $(APP): $(APP_SRC) mongoose.o fmma_protocol.h fpga_program.h
 mongoose.o: third_party/mongoose.c third_party/mongoose.h
 	$(CC) $(MONGOOSE_CFLAGS) $(CPPFLAGS) -c -o $@ third_party/mongoose.c
 
-# The probe deliberately has no dependencies beyond libc, so it still
-# builds when TLS or the network stack is the thing that is broken.
+# -lrt: the logger timestamps with clock_gettime, which on the board's
+# glibc 2.x lives in librt rather than libc.  Harmless on a modern one,
+# where librt is a stub that exists for exactly this reason.
 probe: $(PROBE)
-$(PROBE): src/fmma_probe.c fmma_protocol.h
-	$(CC) $(CFLAGS) -o $@ src/fmma_probe.c
+$(PROBE): $(PROBE_SRC) fmma_protocol.h
+	$(CC) $(CFLAGS) -o $@ $(PROBE_SRC) -lrt
+
+bench: $(BENCH)
+$(BENCH): $(BENCH_SRC) fmma_protocol.h fpga_program.h
+	$(CC) $(CFLAGS) -o $@ $(BENCH_SRC) -lrt
 
 # ---------------------------------------------------------------------
 # A self-contained binary, for a board with no libssl-dev.
@@ -91,12 +107,19 @@ static: $(APP_SRC) third_party/mongoose.c fmma_protocol.h fpga_program.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) -static -o $(APP) \
 	      $(APP_SRC) third_party/mongoose.c \
 	      -lssl -lcrypto -lrt -lm -lpthread -ldl
-	$(CC) $(CFLAGS) -static -o $(PROBE) src/fmma_probe.c
+	$(CC) $(CFLAGS) -static -o $(PROBE) $(PROBE_SRC) -lrt
+	$(CC) $(CFLAGS) -static -o $(BENCH) $(BENCH_SRC) -lrt
 
 # ---------------------------------------------------------------------
 # Generated sources.  The memory map lives in protocol.py and is emitted
 # into C, assembly and Verilog so the three cannot drift apart.
 # ---------------------------------------------------------------------
+
+# These rules only exist where the generators do.  On the board there is
+# no Python and no protocol.py - just the generated headers, which were
+# copied across with the sources - and make must not try to rebuild them
+# from a prerequisite that is not there.
+ifneq ($(wildcard protocol.py),)
 
 protocol: fmma_protocol.h fmma_protocol.inc ../Testbenches/fmma_protocol.vh
 
@@ -114,6 +137,16 @@ program: fpga_program.h
 fpga_program.h: trading.asm fmma_protocol.inc Assembler.py fmma_isa.py
 	$(PYTHON) Assembler.py trading.asm --quiet
 
+else
+
+protocol:
+	@echo "protocol.py is not here; the generated headers were copied in"
+
+program:
+	@echo "Assembler.py is not here; fpga_program.h was copied in"
+
+endif
+
 # ---------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------
@@ -124,8 +157,13 @@ test: $(UNITTEST)
 $(UNITTEST): $(TEST_SRC) fmma_protocol.h
 	$(CC) $(CFLAGS) -o $@ $(TEST_SRC)
 
-check: test program
-	$(PYTHON) -m unittest discover -p 'test_*.py' -v
+check: test
+	@if [ -f protocol.py ]; then \
+	    $(MAKE) program && \
+	    $(PYTHON) -m unittest discover -p 'test_*.py' -v; \
+	else \
+	    echo "(Python suites skipped: the toolchain is not on this host)"; \
+	fi
 
 check-generated:
 	@set -e; tmp=$$(mktemp -d); \
@@ -141,7 +179,7 @@ check-generated:
 	echo "generated files are up to date"
 
 clean:
-	rm -f $(APP) $(PROBE) $(UNITTEST) *.o
+	rm -f $(APP) $(PROBE) $(BENCH) $(UNITTEST) *.o
 
 help:
 	@sed -n '2,12p' Makefile | sed 's/^# \?//'

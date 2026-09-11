@@ -52,6 +52,7 @@ from boardctl import Board, BoardError          # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 REMOTE_DIR = "/root/fmma"
+MANIFEST = ".fmma-manifest"      # list of pushed files, used to fix mtimes
 STOCK_RBF = "/media/fat_partition/soc_system.rbf"
 BRIDGES = ("fpga2hps", "hps2fpga", "lwhps2fpga")
 
@@ -213,10 +214,13 @@ def cmd_status(board, args):
               f"{'available' if ok else 'BLOCKED'}")
         if not ok:
             explain_msel(msel, name)
-    _, out = board.run("uname -r; gcc -dumpversion 2>/dev/null || echo 'no gcc'",
-                       check=False)
-    for label, line in zip(("kernel", "gcc"), out.splitlines()):
-        print(f"{label:<12}: {line.strip()}")
+    # One command per call: the console echoes what it is given, and a
+    # compound line wraps, which makes the echo impossible to strip.
+    for label, cmd in (("kernel", "uname -r"),
+                       ("gcc", "gcc -dumpversion 2>/dev/null || echo none")):
+        _, out = board.run(cmd, check=False)
+        line = out.strip().splitlines()[-1].strip() if out.strip() else "?"
+        print(f"{label:<12}: {line}")
     _, out = board.run(f"ls {REMOTE_DIR} 2>/dev/null | tr '\\n' ' '", check=False)
     print(f"deployed    : {out.strip() or '(nothing)'}")
     return 0
@@ -233,6 +237,13 @@ def cmd_net(board, args):
         print("no address; is a cable plugged into a router?")
         return 1
     print(f"board is at {ip}")
+
+    # These images boot with the clock at the epoch, which makes every
+    # freshly copied source file look like it is from the future and
+    # makes `make` complain about all of them.
+    import datetime
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    board.run(f'date -s "{now}" >/dev/null 2>&1 || true', check=False)
     _, out = board.run("ping -c 2 -W 3 8.8.8.8 2>&1 | tail -1", timeout=30,
                        check=False)
     print(f"internet: {out.strip()}")
@@ -240,20 +251,59 @@ def cmd_net(board, args):
 
 
 def _upload(board, srv, host, files):
-    """Copy files to the board over HTTP, verifying each checksum."""
-    board.run(f"mkdir -p {REMOTE_DIR}/src")
-    for local, remote in files:
-        rel = srv.stage(local, remote)
-        url = srv.url_for(rel, host)
-        dest = f"{REMOTE_DIR}/{remote}"
-        board.run(f"mkdir -p $(dirname {dest})", check=False)
-        board.run(f"wget -q -O {dest} --timeout=60 '{url}'", timeout=180)
-        want = hashlib.md5(Path(local).read_bytes()).hexdigest()
-        _, got = board.run(f"md5sum {dest} | cut -d' ' -f1")
-        got = got.strip().splitlines()[-1].strip()
-        if got != want:
-            raise BoardError(f"checksum mismatch for {remote}")
-        print(f"  {remote}")
+    """Copy files to the board as one tarball.
+
+    Sending them individually means a serial round trip per file, which
+    is both slow and fragile - the console has to stay in step for
+    thirty-five consecutive commands.  One archive is a single wget, a
+    single checksum and a single untar.
+    """
+    import io
+    import tarfile
+
+    # A manifest travels with the archive so the board can touch exactly
+    # the files that arrived - see the note below the untar.
+    manifest = "".join(remote + "\n" for _, remote in files).encode()
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for local, remote in files:
+            tar.add(str(local), arcname=remote)
+        entry = tarfile.TarInfo(MANIFEST)
+        entry.size = len(manifest)
+        tar.addfile(entry, io.BytesIO(manifest))
+    blob = buf.getvalue()
+
+    staging = Path(srv.root) / "fmma-src.tar.gz"
+    staging.write_bytes(blob)
+    want = hashlib.md5(blob).hexdigest()
+    url = srv.url_for("fmma-src.tar.gz", host)
+
+    print(f"  {len(files)} files, {len(blob) // 1024} KB compressed")
+    board.run(f"mkdir -p {REMOTE_DIR}")
+    board.run(f"wget -q -O {REMOTE_DIR}/src.tar.gz --timeout=120 '{url}'",
+              timeout=240)
+    _, got = board.run(f"md5sum {REMOTE_DIR}/src.tar.gz | cut -d' ' -f1",
+                       timeout=60)
+    got = got.strip().splitlines()[-1].strip()
+    if got != want:
+        raise BoardError(f"checksum mismatch: {got} != {want}")
+    board.run(f"cd {REMOTE_DIR} && tar xzf src.tar.gz && rm -f src.tar.gz",
+              timeout=120)
+
+    # tar restores the host's modification times, and the board's clock
+    # is rarely in step with the host's - it is usually behind, so the
+    # sources land looking older than binaries built from the previous
+    # push and make quietly decides there is nothing to do.  You then
+    # test the old binary and cannot work out why the fix did nothing.
+    #
+    # Touching the whole directory is not the answer either: that stamps
+    # the binaries as well, leaving them the same age as their sources,
+    # which make also reads as up to date.  Only the files that actually
+    # arrived get touched, which is what the manifest is for.
+    board.run(f"cd {REMOTE_DIR} && xargs touch < {MANIFEST} "
+              f"&& rm -f {MANIFEST}", timeout=120)
+    print("  unpacked")
 
 
 def cmd_fpga(board, args):
@@ -384,6 +434,56 @@ def cmd_push(board, args):
     return 0
 
 
+#: Cross-built products, and whether the board can manage without them.
+BINARIES = [
+    ("marketstream", True),    # needs OpenSSL headers the board has not got
+    ("fmma-probe",   False),   # builds on the board in a second
+    ("fmma-bench",   False),
+]
+
+
+def cmd_pushbin(board, args):
+    """Upload binaries built by tools/crossbuild.sh.
+
+    The board cannot build marketstream: its image has libssl.so but no
+    headers, and its Ubuntu 12.04 archives no longer exist, so there is
+    nothing to install.  The two diagnostics do build there - they are
+    sent as well only because having all three from one toolchain
+    removes a variable when something misbehaves.
+    """
+    ip = board_ip(board)
+    if not ip:
+        print("the board has no address; run: deploy.py net")
+        return 1
+
+    files, missing = [], []
+    for name, required in BINARIES:
+        path = REPO / "Software" / name
+        if path.is_file():
+            files.append((path, name))
+        elif required:
+            missing.append(name)
+
+    if missing:
+        print("not built:", ", ".join(missing))
+        print("run tools/crossbuild.sh first")
+        return 1
+    if not files:
+        print("nothing to send")
+        return 1
+
+    with FileServer(REPO / "build" / "stage") as srv:
+        print(f"copying {len(files)} binaries to {REMOTE_DIR}")
+        _upload(board, srv, host_ip_for(ip), files)
+
+    board.run(f"cd {REMOTE_DIR} && chmod +x " +
+              " ".join(n for _, n in files))
+    _, out = board.run(f"cd {REMOTE_DIR} && ls -l " +
+                       " ".join(n for _, n in files), check=False)
+    print(out)
+    return 0
+
+
 def cmd_build(board, args):
     print("building on the board")
     code, out = board.run(
@@ -457,6 +557,9 @@ def main(argv=None):
     sub.add_parser("restore", help="reload the stock bitstream") \
        .set_defaults(fn=cmd_restore)
     sub.add_parser("push", help="copy the software").set_defaults(fn=cmd_push)
+
+    sub.add_parser("pushbin", help="copy binaries from tools/crossbuild.sh") \
+       .set_defaults(fn=cmd_pushbin)
 
     b = sub.add_parser("build")
     b.add_argument("target", nargs="?", default="")

@@ -64,12 +64,30 @@ uint64_t fmma_stats_feed_age_us(const struct fmma_stats *s)
 uint64_t fmma_stats_percentile(const struct fmma_stats *s, double p)
 {
     if (s->lat_count == 0) return 0;
-    uint64_t want = (uint64_t)(s->lat_count * p);
+
+    /* At least one sample must be at or below the answer, so round up
+     * and never ask for zero: with `want` at 0 the first bucket
+     * satisfies the test whether or not anything landed in it. */
+    uint64_t want = (uint64_t)(s->lat_count * p + 0.999);
+    if (want == 0) want = 1;
+    if (want > s->lat_count) want = s->lat_count;
+
     uint64_t seen = 0;
     for (unsigned b = 0; b < FMMA_LAT_BUCKETS; b++) {
+        if (s->lat_hist[b] == 0) continue;
         seen += s->lat_hist[b];
-        if (seen >= want)
-            return 1ull << (b + 1);          /* upper edge of the bucket */
+        if (seen >= want) {
+            /*
+             * The buckets are powers of two, so all this can say is
+             * "somewhere in [2^b, 2^(b+1))".  Reporting the upper edge
+             * is the conservative reading, but the edge may sit above
+             * every sample actually taken - and a percentile above the
+             * maximum is nonsense that makes a latency table look
+             * wrong.  Clamp it; the bound stays honest either way.
+             */
+            uint64_t edge = 1ull << (b + 1);
+            return edge > s->lat_max ? s->lat_max : edge;
+        }
     }
     return s->lat_max;
 }

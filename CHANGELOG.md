@@ -1,5 +1,76 @@
 # Changelog
 
+## 2026-09 (c) — running on hardware
+
+The design was brought up on a real DE1-SoC and measured. Everything
+below either came out of that or was needed to get there.
+
+### Measured
+
+* **The fabric answers a quote in 3 µs minimum, 5 µs mean**, over 5 000
+  synthetic quotes, with **zero unanswered and zero side disagreements**
+  against the C model. The measured minimum sits on the simulated
+  best case (156 cycles = 3.12 µs) and the measured idle loop rate,
+  1 282 151 loops/s, matches the simulated 780 ns to two significant
+  figures — so the RTL, the instruction-set simulator and the silicon
+  are demonstrably the same design.
+* **End to end on live Coinbase data**: 424 quotes and 23 decisions in
+  90 s, no feed drops, no parse errors.
+* The end-to-end tail is **the host's poll interval, not the fabric**:
+  1082 µs with the default `--poll-ms 1`, 48 µs with `--poll-ms 0`.
+  Recorded prominently in [14](docs/14-latency-and-performance.md)
+  because quoting the first figure as "FPGA latency" would be wrong by
+  two orders of magnitude.
+
+### Added
+
+* **`fmma-bench`** — a hardware-in-the-loop latency harness. Drives the
+  protocol with a deterministic synthetic quote series, busy-polls for
+  each answer, and reports the distribution. It also runs the same
+  quotes through `fmma_strategy.c` and compares sides on every sample,
+  so a latency result is one where hardware and software also agreed on
+  the answer. libc only: no TLS, no network, no broker.
+* **`tools/Dockerfile.armhf` and `tools/crossbuild.sh`** — reproducible
+  static armhf cross-build, plus `deploy.py pushbin`. Not a
+  convenience: the board ships `libssl.so` without headers and its
+  Ubuntu 12.04 archives are gone, so `marketstream` **cannot** be built
+  there at all.
+
+### Fixed
+
+* **`fmma-probe` did not check the fabric state before mapping the
+  bridge.** Every other path did. The probe is the tool most likely to
+  be aimed at a board in a bad state, and an access to an unconfigured
+  bridge hangs the board with no software recovery — which is exactly
+  how this project lost a board during bring-up. `--force` overrides.
+* **`fmma_stats_percentile` could return a value above the maximum**,
+  because it reported the upper edge of a power-of-two bucket. A 49-
+  sample run printed `p99 16 us, max 10 us`. Now clamped to the
+  observed maximum, and empty buckets are skipped so a small sample
+  cannot resolve to bucket zero.
+* **`deploy.py push` left `make` believing there was nothing to do.**
+  `tar` restores the host's modification times and the board's clock is
+  behind, so freshly pushed sources looked older than the previous
+  build. Touching the whole directory was no better — that stamped the
+  binaries too, leaving them the same age as their sources. A manifest
+  now travels inside the archive so only the files that arrived get
+  touched.
+* **The probe and bench need `-lrt`** on the board: its glibc 2.15 keeps
+  `clock_gettime` in librt.
+
+### Documented
+
+* [13](docs/13-test-report.md) §13.5 rewritten from "partially run" to
+  the actual results, including what was *not* run and why.
+* [14](docs/14-latency-and-performance.md) §14.3/§14.5/§14.8 now carry
+  hardware measurements beside the simulated figures.
+* [10](docs/10-build-guide.md) §10.3 no longer claims `make` works on
+  the board; [11](docs/11-board-bringup.md) §11.6 adds the bench step
+  before the network is involved, and its worked examples are now real
+  transcripts rather than plausible-looking ones. One of the invented
+  examples contained a `p99` above its `max` — the same bug as above,
+  which is a fair argument for pasting real output into documents.
+
 ## 2026-09 (b) — modular host application, quoting strategy, board tooling
 
 Follows the protocol v2 work below, on the same day. This round is about
