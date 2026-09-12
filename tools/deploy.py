@@ -155,24 +155,37 @@ def read_msel(board):
     peripheral register, not the FPGA bridge, so it is safe whatever
     state the fabric is in.
     """
-    ip = board_ip(board)
-    if not ip:
-        return None
     try:
-        with FileServer(REPO / "build" / "stage") as srv:
-            host = host_ip_for(ip)
-            rel = srv.stage(REPO / "tools" / "msel.c")
-            board.run(f"mkdir -p {REMOTE_DIR}", check=False)
-            board.run(f"wget -q -O {REMOTE_DIR}/msel.c --timeout=30 "
-                      f"'{srv.url_for(rel, host)}'", timeout=60)
-        code, _ = board.run(f"cd {REMOTE_DIR} && gcc -O2 -o msel msel.c",
-                            timeout=120, check=False)
+        # Prefer a helper that is already there.  This check must not
+        # need the network: --remote exists for people whose network
+        # transfer is failing, and silently dropping the MSEL guard for
+        # exactly those users would be the wrong way round.
+        code, _ = board.run(f"test -x {REMOTE_DIR}/msel", check=False)
+
         if code != 0:
-            return None
+            ip = board_ip(board)
+            if not ip:
+                print("  (cannot check MSEL: no network and no msel helper "
+                      "on the board)")
+                return None
+            with FileServer(REPO / "build" / "stage") as srv:
+                host = host_ip_for(ip)
+                rel = srv.stage(REPO / "tools" / "msel.c")
+                board.run(f"mkdir -p {REMOTE_DIR}", check=False)
+                board.run(f"wget -q -O {REMOTE_DIR}/msel.c --timeout=30 "
+                          f"'{srv.url_for(rel, host)}'", timeout=60)
+            code, _ = board.run(f"cd {REMOTE_DIR} && gcc -O2 -o msel msel.c",
+                                timeout=120, check=False)
+            if code != 0:
+                print("  (cannot check MSEL: msel.c did not build)")
+                return None
+
         code, out = board.run(f"{REMOTE_DIR}/msel 2>/dev/null", check=False)
         if code != 0:
+            print("  (cannot check MSEL: the helper would not run)")
             return None
     except BoardError:
+        print("  (cannot check MSEL: the board did not answer)")
         return None
 
     for line in reversed(out.strip().splitlines()):
@@ -307,9 +320,23 @@ def _upload(board, srv, host, files):
 
 
 def cmd_fpga(board, args):
+    # --remote: the bitstream is already on the board, put there by
+    # whatever means suits - scp, a file manager, a USB stick.  The
+    # transfer is the least interesting part of this command; the
+    # bridge sequencing and the checks around it are the part worth
+    # keeping, and doing those by hand is how a board gets hung.
+    if args.remote:
+        print(f"using the bitstream already on the board: {args.remote}")
+        code, _ = board.run(f"test -s {args.remote}", check=False)
+        if code != 0:
+            print(f"  {args.remote} is missing or empty on the board")
+            return 1
+        return _program(board, args.remote, restore_on_failure=True)
+
     rbf = Path(args.rbf or REPO / "output_files" / "HFTTop.rbf")
     if not rbf.is_file():
-        print(f"{rbf} not found. Generate it with:")
+        print(f"{rbf} not found. It is committed, so a clean checkout has")
+        print("it; otherwise regenerate it with:")
         print("  quartus_cpf -c -o bitstream_compression=on "
               "output_files/HFTTop.sof output_files/HFTTop.rbf")
         return 1
@@ -551,7 +578,13 @@ def main(argv=None):
     sub.add_parser("net").set_defaults(fn=cmd_net)
 
     f = sub.add_parser("fpga", help="program the FPGA")
-    f.add_argument("rbf", nargs="?")
+    f.add_argument("rbf", nargs="?",
+                   help="bitstream on THIS machine (default: "
+                        "output_files/HFTTop.rbf); it is sent over HTTP")
+    f.add_argument("--remote", metavar="PATH",
+                   help="bitstream already on the BOARD, e.g. "
+                        "/home/root/HFTTop.rbf - skips the transfer and "
+                        "just programs it, with all the usual checks")
     f.set_defaults(fn=cmd_fpga)
 
     sub.add_parser("restore", help="reload the stock bitstream") \
@@ -579,8 +612,12 @@ def main(argv=None):
     a.set_defaults(fn=cmd_all, target="", what="")
 
     args = p.parse_args(argv)
+    # Subcommands share one namespace because `all` reruns the others
+    # with it, so anything cmd_fpga reads has to exist either way.
     if not hasattr(args, "rbf"):
         args.rbf = None
+    if not hasattr(args, "remote"):
+        args.remote = None
 
     try:
         with Board(args.port, verbose=args.verbose) as board:

@@ -257,6 +257,60 @@ This is the first thing that touches the bridge, which is why it comes
 after the `HEX0` check and why it only writes to the free region above
 the protocol block.
 
+### If the bitstream transfer will not go through
+
+`deploy.py fpga` sends the `.rbf` over HTTP from a short-lived server
+on your PC, so the board has to be able to reach *you*. The usual
+reason it fails is the Windows firewall blocking Python's listening
+socket the first time, or the PC having several interfaces and the
+tool advertising the wrong one. Check it from the board:
+
+```bash
+wget -O /dev/null http://<your-PC-IP>:<port>/...
+```
+
+You do not have to fix that to make progress. Put the `.rbf` on the
+board any way you like — `scp`, a file-manager app, a USB stick — and
+then point the tool at it:
+
+```bash
+python tools/deploy.py --port COM5 fpga --remote /home/root/HFTTop.rbf
+```
+
+**Where you put the file does not matter.** It is not picked up from a
+directory by anything; the path is only an argument to `dd`. What
+matters is the sequence, which is what this command still does for you:
+
+```
+MSEL = 01010 (FPPx16) - the HPS can configure the FPGA
+disabling the bridges
+writing the bitstream
+FPGA manager reports: user mode
+enabling the bridges
+done: user mode
+```
+
+Doing that by hand is possible and is how boards get hung, because the
+order is load-bearing:
+
+```bash
+for b in fpga2hps hps2fpga lwhps2fpga; do
+    echo 0 > /sys/class/fpga-bridge/$b/enable
+done
+dd if=/home/root/HFTTop.rbf of=/dev/fpga0 bs=1M
+cat /sys/class/fpga/fpga0/status          # must print: user mode
+# ONLY if it said "user mode":
+for b in fpga2hps hps2fpga lwhps2fpga; do
+    echo 1 > /sys/class/fpga-bridge/$b/enable
+done
+```
+
+Enabling the bridges after a configuration that did *not* reach user
+mode is the specific mistake that hangs the board with no software
+recovery. `--remote` also checks `dmesg` for an `fpgamgr: timeout` and
+puts the stock bitstream back if anything went wrong, which the manual
+sequence does not.
+
 ## 11.6 Measure the fabric before involving the network
 
 Before any of TLS, DNS, the exchange or the broker is in the picture,

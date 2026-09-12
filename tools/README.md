@@ -36,6 +36,7 @@ Automates [docs/11](../docs/11-board-bringup.md).
 python tools/deploy.py status      # what state is the board in?
 python tools/deploy.py net         # DHCP on eth0
 python tools/deploy.py fpga        # program the FPGA, safely
+python tools/deploy.py fpga --remote /home/root/HFTTop.rbf   # already on the board
 python tools/deploy.py restore     # put the stock bitstream back
 python tools/deploy.py push        # copy the sources
 python tools/deploy.py pushbin     # copy binaries from crossbuild.sh
@@ -78,6 +79,22 @@ seconds. The output is **static**, because the cross toolchain has glibc
 See [docs/10](../docs/10-build-guide.md) §10.4a for the details,
 including why static glibc does not break DNS here and which linker
 warnings are expected.
+
+### Where files go on the board
+
+| What | Where | Put there by |
+|------|-------|--------------|
+| Bitstream | `/root/fmma.rbf`, then written to `/dev/fpga0` | `fpga` |
+| Sources | `/root/fmma/` | `push` |
+| Binaries | `/root/fmma/` | `pushbin` |
+| Logs you pull back | wherever you asked | `boardctl.py pull` |
+
+The bitstream path is the one people expect to matter and it does not:
+nothing reads the `.rbf` out of a directory, it is only an argument to
+`dd if=... of=/dev/fpga0`. Drop it wherever you like and use
+`fpga --remote <path>`. The sources and binaries do have to live
+together in `/root/fmma`, because the Makefile and the runtime expect
+`src/`, `fmma_protocol.h` and `fpga_program.h` beside each other.
 
 ### The safety rule
 
