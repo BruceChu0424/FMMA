@@ -24,6 +24,18 @@ separated from the echo and from kernel chatter. That is the whole trick
 to making a serial console reliable: never parse a prompt, always parse a
 marker you chose yourself.
 
+The markers are built from shell variables, so the complete marker never
+appears in what the console echoes back and the first literal occurrence
+in the stream is guaranteed to be real output. And the whole thing goes
+on **one line**, so the shell echoes all of it before running any of it.
+Split across two lines it looks fine until a command's output does not
+end in a newline — then the prompt and the echo of the epilogue land on
+the same line as the last line of real output, and it cannot be
+separated from them. That quietly swallowed the output of anything
+ending without a newline: `ls | tr '\n' ' '` came back empty, and
+`deploy.py status` reported `deployed : (nothing)` for a directory with
+fifteen files in it.
+
 File transfer over the console is base64 at about 6 KB/s — fine for a
 source file, painful for a 2 MB bitstream, which is why `deploy.py` uses
 HTTP once the board has an address.

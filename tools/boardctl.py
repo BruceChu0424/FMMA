@@ -53,6 +53,11 @@ CHUNK = 2048                 # base64 payload characters per console write
 
 _CSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 
+#: A shell prompt at the end of a line, e.g. "root@de1soclinux:/root/fmma# ".
+#: Only ever applied to the line carrying our epilogue echo, so output
+#: that happens to end in something prompt-shaped is left alone.
+_PROMPT_TAIL = re.compile(r"\s*\S*[@:]\S*[#$]\s*$")
+
 
 class BoardError(RuntimeError):
     pass
@@ -86,11 +91,24 @@ def _clean(text):
     text = _CSI.sub("", text).replace("\r", "")
     lines = []
     for ln in text.split("\n"):
-        # The shell echoes the second line we send - the one that
-        # captures $? and prints the end marker - and that echo lands
-        # inside the captured body. It is the only place this token can
-        # come from, so dropping it is unambiguous.
+        # The shell echoes the line that captures $? and prints the end
+        # marker, and that echo lands inside the captured body.
+        #
+        # Dropping the whole line is wrong, and silently lost data for a
+        # long time.  When a command's output does not end in a newline
+        # - `tr '\n' ' '`, `printf` without one, `echo -n` - the shell
+        # writes its prompt and that echo onto the SAME line, so the
+        # last line of real output shares it.  `ls | tr '\n' ' '` came
+        # back completely empty, and `deploy.py status` reported
+        # "deployed : (nothing)" for a directory with fifteen files in
+        # it.
+        #
+        # So cut at the token instead, then remove the prompt the shell
+        # printed just before its echo.
         if "__rc=$?" in ln:
+            head = _PROMPT_TAIL.sub("", ln.split("__rc=$?")[0])
+            if head.strip():
+                lines.append(head)
             continue
         lines.append(ln)
     while lines and not lines[0].strip():
@@ -144,13 +162,30 @@ class Board:
         s_mark = "@FS" + tag + "@"
         e_mark = "@FE" + tag + "@"
 
+        # Two properties are being bought here.
+        #
         # The assignments hold the marker minus its final '@', so the
-        # complete marker never appears in what the console echoes back.
+        # complete marker never appears in what the console echoes
+        # back, and the first literal occurrence in the stream is
+        # therefore real output.
+        #
+        # And everything goes on ONE line, so the shell echoes it all
+        # before running any of it.  Split across two lines, the echo
+        # of the second one arrives *after* the command has written its
+        # output - and if that output does not end in a newline, the
+        # prompt and the echo land on the same line as the last line of
+        # real output, which then cannot be separated from them.  That
+        # silently swallowed the output of anything ending without a
+        # newline, `ls | tr '\n' ' '` among them.
+        #
+        # The leading \n on the epilogue guarantees the end marker
+        # starts its own line whatever the command left behind.
+        body = command.strip().rstrip(";")
         wrapped = (
             "S='@FS" + tag + "'; E='@FE" + tag + "'; "
             "printf '%s\\n' \"${S}@\"; "
-            + command + "\n"
-            "__rc=$?; printf '%s%d%s\\n' \"${E}@\" $__rc \"${E}@\"\n"
+            + body +
+            "; __rc=$?; printf '\\n%s%d%s\\n' \"${E}@\" $__rc \"${E}@\"\n"
         )
 
         self.ser.reset_input_buffer()
