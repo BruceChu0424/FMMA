@@ -51,6 +51,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from boardctl import Board, BoardError          # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
+
+#: Set by --host-ip.  The address the board should fetch from, when
+#: this machine cannot work it out itself - see under_wsl().
+HOST_IP_OVERRIDE = None
 REMOTE_DIR = "/root/fmma"
 MANIFEST = ".fmma-manifest"      # list of pushed files, used to fix mtimes
 STOCK_RBF = "/media/fat_partition/soc_system.rbf"
@@ -99,13 +103,62 @@ class FileServer:
 
 
 def host_ip_for(board_ip):
-    """Which of this machine's addresses can the board reach us on?"""
+    """Which of this machine's addresses can the board reach us on?
+
+    Asking the routing table which source address it would use for the
+    board is right on a normal machine and wrong inside WSL2, where the
+    answer is a NAT'd 172.x address that exists only on the Windows
+    host.  See under_wsl() for what that costs.
+    """
+    if HOST_IP_OVERRIDE:
+        return HOST_IP_OVERRIDE
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect((board_ip, 9))
         return s.getsockname()[0]
     finally:
         s.close()
+
+
+def under_wsl():
+    """True when running inside WSL, which breaks inbound connections.
+
+    WSL2 puts Linux behind a NAT'd virtual switch.  Outbound works, so
+    the board pings and the internet is reachable and everything looks
+    fine - but the board cannot open a connection *to* us, and every
+    transfer here is the board fetching over HTTP from a short-lived
+    server on this machine.  So push, pushbin, fpga and the msel.c
+    fetch all fail together, with timeouts that look like board faults.
+    """
+    try:
+        with open("/proc/version", encoding="utf-8", errors="replace") as f:
+            return "microsoft" in f.read().lower()
+    except OSError:
+        return False
+
+
+def explain_no_route(host, port):
+    """Say why the board probably could not fetch from us."""
+    print()
+    print("  the board could not fetch from this machine.")
+    if under_wsl():
+        print("  this looks like WSL: Linux sits behind a NAT'd adapter, so")
+        print(f"  {host} exists only inside WSL and the board cannot reach it.")
+        print("  three ways out, easiest first:")
+        print("    - run deploy.py from Windows Python instead of WSL")
+        print("    - for the bitstream only: copy it over however you like,")
+        print("      then  deploy.py fpga --remote /home/root/HFTTop.rbf")
+        print("    - forward the port from Windows and pass the LAN address:")
+        print(f"      netsh interface portproxy add v4tov4 listenport={port} "
+              f"connectaddress={host} connectport={port}")
+        print(f"      deploy.py --host-ip <your-windows-LAN-IP> ...")
+    else:
+        print(f"  we advertised {host}:{port}. Check that:")
+        print("    - the firewall allows inbound connections to Python")
+        print("    - that address is the one on the board's subnet")
+        print("      (a VPN or Docker adapter can win the route)")
+        print(f"    - from the board:  wget -O /dev/null http://{host}:{port}/")
+        print("    - or pass it yourself:  deploy.py --host-ip <address> ...")
 
 
 # ---------------------------------------------------------------------------
@@ -163,29 +216,28 @@ def read_msel(board):
         code, _ = board.run(f"test -x {REMOTE_DIR}/msel", check=False)
 
         if code != 0:
-            ip = board_ip(board)
-            if not ip:
-                print("  (cannot check MSEL: no network and no msel helper "
-                      "on the board)")
-                return None
-            with FileServer(REPO / "build" / "stage") as srv:
-                host = host_ip_for(ip)
-                rel = srv.stage(REPO / "tools" / "msel.c")
-                board.run(f"mkdir -p {REMOTE_DIR}", check=False)
-                board.run(f"wget -q -O {REMOTE_DIR}/msel.c --timeout=30 "
-                          f"'{srv.url_for(rel, host)}'", timeout=60)
-            code, _ = board.run(f"cd {REMOTE_DIR} && gcc -O2 -o msel msel.c",
-                                timeout=120, check=False)
+            # Over the serial console, not HTTP.  msel.c is about 2 KB, so
+            # even at the console's ~6 KB/s this costs under a second - and
+            # unlike the network it always works.  A safety check must not
+            # be the thing that needs the network to be healthy: the first
+            # command anyone runs is `status`, often precisely because the
+            # network is not.
+            board.run(f"mkdir -p {REMOTE_DIR}", check=False)
+            board.push(REPO / "tools" / "msel.c", REMOTE_DIR, progress=False)
+            code, out = board.run(f"cd {REMOTE_DIR} && gcc -O2 -o msel msel.c "
+                                  f"2>&1 | tail -3", timeout=180, check=False)
+            code, _ = board.run(f"test -x {REMOTE_DIR}/msel", check=False)
             if code != 0:
-                print("  (cannot check MSEL: msel.c did not build)")
+                print("  (cannot check MSEL: msel.c would not build - "
+                      f"{out.strip().splitlines()[-1] if out.strip() else 'no gcc?'})")
                 return None
 
         code, out = board.run(f"{REMOTE_DIR}/msel 2>/dev/null", check=False)
         if code != 0:
             print("  (cannot check MSEL: the helper would not run)")
             return None
-    except BoardError:
-        print("  (cannot check MSEL: the board did not answer)")
+    except BoardError as e:
+        print(f"  (cannot check MSEL: {e})")
         return None
 
     for line in reversed(out.strip().splitlines()):
@@ -294,8 +346,11 @@ def _upload(board, srv, host, files):
 
     print(f"  {len(files)} files, {len(blob) // 1024} KB compressed")
     board.run(f"mkdir -p {REMOTE_DIR}")
-    board.run(f"wget -q -O {REMOTE_DIR}/src.tar.gz --timeout=120 '{url}'",
-              timeout=240)
+    code, _ = board.run(f"wget -q -O {REMOTE_DIR}/src.tar.gz --timeout=120 "
+                        f"'{url}'", timeout=240, check=False)
+    if code != 0:
+        explain_no_route(host, srv.port)
+        raise BoardError("the source transfer did not go through")
     _, got = board.run(f"md5sum {REMOTE_DIR}/src.tar.gz | cut -d' ' -f1",
                        timeout=60)
     got = got.strip().splitlines()[-1].strip()
@@ -350,8 +405,16 @@ def cmd_fpga(board, args):
         host = host_ip_for(ip)
         rel = srv.stage(rbf)
         print(f"transferring {rbf.name} ({rbf.stat().st_size} bytes)")
-        board.run(f"wget -q -O /root/fmma.rbf --timeout=120 "
-                  f"'{srv.url_for(rel, host)}'", timeout=240)
+        code, _ = board.run(f"wget -q -O /root/fmma.rbf --timeout=120 "
+                            f"'{srv.url_for(rel, host)}'", timeout=240,
+                            check=False)
+        if code != 0:
+            explain_no_route(host, srv.port)
+            print()
+            print("  the bitstream does not have to come from here. Copy it")
+            print("  to the board any way you like, then:")
+            print("    deploy.py fpga --remote /home/root/HFTTop.rbf")
+            return 1
         want = hashlib.md5(rbf.read_bytes()).hexdigest()
         _, got = board.run("md5sum /root/fmma.rbf | cut -d' ' -f1")
         if got.strip().splitlines()[-1].strip() != want:
@@ -571,6 +634,9 @@ def cmd_all(board, args):
 def main(argv=None):
     p = argparse.ArgumentParser(description="deploy FMMA to a DE1-SoC")
     p.add_argument("--port", help="serial port (default: autodetect)")
+    p.add_argument("--host-ip", metavar="ADDR",
+                   help="the address the board should fetch from, when this "
+                        "machine cannot work it out (WSL, VPN, several NICs)")
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -618,6 +684,9 @@ def main(argv=None):
         args.rbf = None
     if not hasattr(args, "remote"):
         args.remote = None
+
+    global HOST_IP_OVERRIDE
+    HOST_IP_OVERRIDE = args.host_ip
 
     try:
         with Board(args.port, verbose=args.verbose) as board:

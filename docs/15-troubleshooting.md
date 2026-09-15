@@ -77,6 +77,70 @@ the table. Or use JTAG, which works in any mode.
 | Port opens, nothing at all | Wrong cable | The micro-B **UART** connector, not the USB Blaster type-B one. |
 | Boot log then silence | The SD image is not booting | Re-write the card; check the MSEL switches. |
 
+## 15.3a `status` says `FPGA : power off`
+
+**That is the normal, healthy reading for a board that has not been
+configured since boot.** It is not about the board's power, and it does
+not mean anything is wrong.
+
+`status` just prints `/sys/class/fpga/fpga0/status`, which is the FPGA
+manager's mode field. `power off` is mode 0 — the fabric is
+unconfigured. The board itself is obviously alive, because the same
+command reported its IP, kernel and gcc version. Run `deploy.py fpga`
+and it becomes `user mode`.
+
+The states you will see, in the order they pass through:
+
+| `status` | Meaning |
+|----------|---------|
+| `power off` | fabric unconfigured — expected before `deploy.py fpga` |
+| `reset phase`, `configuration phase`, `initialisation phase` | mid-configuration |
+| `user mode` | **configured and running** — the only state in which the bridge is safe to touch |
+
+## 15.3b Transfers to the board fail (WSL, VPN, firewall)
+
+Symptom: `push`, `pushbin` and `fpga` all time out, and `status`
+prints `MSEL : could not read` — while the board is plainly reachable
+and answering on the serial console.
+
+They fail together because they share one mechanism. The board fetches
+over HTTP from a short-lived server on your machine, so **the board has
+to be able to open a connection to you.** Outbound working is not the
+same thing, which is why the board pinging the internet tells you
+nothing about this.
+
+**Under WSL this cannot work as-is.** WSL2 puts Linux behind a NAT'd
+virtual adapter, so the address `deploy.py` advertises is a `172.x`
+one that exists only inside WSL, and the HTTP server binds inside the
+WSL network namespace — so even passing the Windows LAN address will
+not help without a port proxy. `deploy.py` detects this and says so.
+Three ways out, easiest first:
+
+1. **Run `deploy.py` from Windows Python**, not from WSL. Nothing else
+   changes.
+2. **For the bitstream, sidestep it entirely.** Copy the `.rbf` across
+   however you like — `scp`, a file manager, a USB stick — then
+   `deploy.py fpga --remote /home/root/HFTTop.rbf`. See §11.5.
+3. **Forward the port from Windows** and name the address yourself:
+   ```
+   netsh interface portproxy add v4tov4 listenport=PORT \
+         connectaddress=<WSL-IP> connectport=PORT
+   deploy.py --host-ip <your-Windows-LAN-IP> push
+   ```
+
+Outside WSL the usual causes are the Windows firewall blocking
+Python's first listening socket, or a VPN/Docker adapter winning the
+route so the wrong address gets advertised. `--host-ip` fixes the
+second; to confirm either, try the URL the tool prints from the board:
+
+```bash
+wget -O /dev/null http://<host>:<port>/
+```
+
+The MSEL check no longer depends on any of this — it pushes `msel.c`
+over the serial console instead, because a safety check must not be
+the thing that needs a healthy network.
+
 ## 15.4 The CPU does not start
 
 `[LOADER] ERROR: no heartbeat.`
