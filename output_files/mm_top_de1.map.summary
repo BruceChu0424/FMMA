@@ -1,0 +1,17 @@
+Analysis & Synthesis Status : Successful - Tue Oct  6 13:32:18 2026
+Quartus Prime Version : 24.1std.0 Build 1077 03/04/2025 SC Lite Edition
+Revision Name : mm_top_de1
+Top-level Entity Name : hft_top
+Family : Cyclone V
+Logic utilization (in ALMs) : N/A
+Total registers : 635
+Total pins : 87
+Total virtual pins : 0
+Total block memory bits : 262,144
+Total DSP Blocks : 0
+Total HSSI RX PCSs : 0
+Total HSSI PMA RX Deserializers : 0
+Total HSSI TX PCSs : 0
+Total HSSI PMA TX Serializers : 0
+Total PLLs : 0
+Total DLLs : 1

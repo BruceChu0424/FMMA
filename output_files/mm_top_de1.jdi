@@ -1,0 +1,17 @@
+<sld_project_info>
+  <project>
+    <hash md5_digest_80b="03be77c027e6f1dd3bc4"/>
+  </project>
+  <file_info>
+    <file device="5CSEMA5F31C6" path="mm_top_de1.sof" usercode="0xFFFFFFFF"/>
+  </file_info>
+  <sld_infos>
+    <sld_info hpath="HPSfgpa2:u0" name="u0">
+      <assignment_values>
+        <assignment_value text="QSYS_NAME HPSfgpa2 HAS_SOPCINFO 1 GENERATION_ID 1791311856"/>
+        <assignment_value text="QSYS_NAME HPSfgpa2 HAS_SOPCINFO 1 GENERATION_ID 1791315060"/>
+      </assignment_values>
+      <parameters/>
+    </sld_info>
+  </sld_infos>
+</sld_project_info>
